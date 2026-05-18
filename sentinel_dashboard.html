@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font-sans,'Inter',sans-serif);background:#0d1117;color:#e6edf3;min-height:100vh;padding:0;}
+.shell{display:grid;grid-template-columns:200px 1fr;min-height:100vh;}
+.sidebar{background:#161b22;border-right:1px solid #21262d;padding:20px 0;display:flex;flex-direction:column;}
+.logo{padding:0 16px 20px;border-bottom:1px solid #21262d;margin-bottom:16px;}
+.logo-name{font-size:15px;font-weight:500;color:#e6edf3;letter-spacing:.5px;}
+.logo-sub{font-size:11px;color:#7d8590;margin-top:2px;}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#DEFF9A;display:inline-block;margin-right:6px;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 16px;font-size:13px;color:#7d8590;cursor:pointer;border-left:2px solid transparent;transition:all .15s;}
+.nav-item.active{color:#DEFF9A;border-left-color:#DEFF9A;background:rgba(222,255,154,.06);}
+.nav-item:hover:not(.active){color:#e6edf3;background:rgba(255,255,255,.04);}
+.nav-icon{font-size:16px;width:18px;text-align:center;}
+.main{padding:20px;display:flex;flex-direction:column;gap:16px;overflow:auto;}
+.topbar{display:flex;align-items:center;justify-content:space-between;}
+.topbar-title{font-size:14px;font-weight:500;color:#e6edf3;}
+.topbar-meta{font-size:12px;color:#7d8590;}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 8px;border-radius:4px;font-weight:500;}
+.badge-ok{background:rgba(222,255,154,.12);color:#DEFF9A;}
+.badge-warn{background:rgba(245,158,11,.12);color:#f59e0b;}
+.badge-danger{background:rgba(239,68,68,.12);color:#ef4444;}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.metric{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:14px 16px;}
+.metric-label{font-size:11px;color:#7d8590;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
+.metric-val{font-size:22px;font-weight:500;color:#e6edf3;}
+.metric-sub{font-size:11px;color:#7d8590;margin-top:4px;}
+.metric-val.ok{color:#DEFF9A;}
+.metric-val.warn{color:#f59e0b;}
+.metric-val.danger{color:#ef4444;}
+.panels{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.panel{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;}
+.panel-full{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;}
+.panel-title{font-size:12px;font-weight:500;color:#7d8590;text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;}
+.chart-wrap{position:relative;height:140px;}
+.canary-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:4px;}
+.canary-dot{height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;}
+.canary-dot.ok{background:rgba(222,255,154,.12);color:#DEFF9A;border:1px solid rgba(222,255,154,.2);}
+.canary-dot.dead{background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.3);animation:blink .6s infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+.log-table{width:100%;font-size:12px;border-collapse:collapse;}
+.log-table th{font-size:11px;color:#7d8590;font-weight:500;text-align:left;padding:6px 8px;border-bottom:1px solid #21262d;}
+.log-table td{padding:7px 8px;border-bottom:1px solid rgba(33,38,45,.6);color:#c9d1d9;vertical-align:top;}
+.log-table tr:last-child td{border-bottom:none;}
+.tag{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:500;}
+.tag-low{background:rgba(222,255,154,.1);color:#DEFF9A;}
+.tag-med{background:rgba(245,158,11,.1);color:#f59e0b;}
+.tag-high{background:rgba(239,68,68,.1);color:#ef4444;}
+.proc-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(33,38,45,.6);}
+.proc-row:last-child{border-bottom:none;}
+.proc-name{font-size:13px;color:#e6edf3;flex:1;}
+.proc-pid{font-size:11px;color:#7d8590;min-width:50px;}
+.proc-bar-wrap{flex:1;height:6px;background:#21262d;border-radius:3px;overflow:hidden;}
+.proc-bar{height:100%;border-radius:3px;transition:width .5s;}
+.kill-btn{font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid #21262d;background:transparent;color:#7d8590;cursor:pointer;transition:all .15s;}
+.kill-btn:hover{border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,.08);}
+.kill-btn.active{border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,.15);}
+.entropy-bar{height:12px;background:#21262d;border-radius:3px;overflow:hidden;margin-bottom:6px;}
+.entropy-fill{height:100%;border-radius:3px;transition:width .6s;}
+.section-label{font-size:11px;color:#7d8590;margin-bottom:4px;}
+.alert-box{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:6px;padding:10px 14px;display:flex;align-items:flex-start;gap:10px;display:none;}
+.alert-box.visible{display:flex;}
+.alert-icon{color:#ef4444;font-size:18px;flex-shrink:0;margin-top:1px;}
+.alert-text{font-size:12px;color:#fca5a5;line-height:1.5;}
+.alert-title{font-size:13px;font-weight:500;color:#ef4444;margin-bottom:3px;}
+.controls{display:flex;gap:8px;align-items:center;}
+.ctrl-btn{font-size:12px;padding:5px 12px;border-radius:5px;border:1px solid #30363d;background:transparent;color:#c9d1d9;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px;}
+.ctrl-btn:hover{background:rgba(255,255,255,.05);border-color:#7d8590;}
+.ctrl-btn.primary{border-color:#DEFF9A;color:#DEFF9A;}
+.ctrl-btn.primary:hover{background:rgba(222,255,154,.08);}
+.ctrl-btn.red-btn{border-color:rgba(239,68,68,.4);color:#ef4444;}
+.ctrl-btn.red-btn:hover{background:rgba(239,68,68,.1);}
+</style>
+</head>
+<body>
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Sentinel Agent — cybersecurity dashboard showing real-time ransomware detection status, file I/O velocity, entropy analysis, canary file integrity, and active process watchlist.</h2>
+<div class="shell">
+  <div class="sidebar">
+    <div class="logo">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <i class="ti ti-shield-lock" style="font-size:20px;color:#DEFF9A;" aria-hidden="true"></i>
+        <div>
+          <div class="logo-name">SENTINEL</div>
+          <div class="logo-sub">Agent v1.0</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#DEFF9A;">
+        <span class="status-dot"></span><span id="sys-status">System protected</span>
+      </div>
+    </div>
+    <nav>
+      <div class="nav-item active"><i class="ti ti-layout-dashboard nav-icon" aria-hidden="true"></i>Dashboard</div>
+      <div class="nav-item"><i class="ti ti-eye nav-icon" aria-hidden="true"></i>File monitor</div>
+      <div class="nav-item"><i class="ti ti-activity nav-icon" aria-hidden="true"></i>Processes</div>
+      <div class="nav-item"><i class="ti ti-database nav-icon" aria-hidden="true"></i>Audit logs</div>
+      <div class="nav-item"><i class="ti ti-settings nav-icon" aria-hidden="true"></i>Thresholds</div>
+    </nav>
+    <div style="margin-top:auto;padding:16px;border-top:1px solid #21262d;">
+      <div style="font-size:11px;color:#7d8590;margin-bottom:8px;">Runtime</div>
+      <div style="font-size:13px;color:#e6edf3;" id="runtime">00:00:00</div>
+      <div style="font-size:11px;color:#7d8590;margin-top:6px;">Python 3.12 · watchdog · psutil</div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Detection Overview</div>
+        <div class="topbar-meta" id="last-scan">Last scan: just now</div>
+      </div>
+      <div class="controls">
+        <div class="ctrl-btn primary" onclick="triggerAttack()"><i class="ti ti-bug" aria-hidden="true"></i>Simulate attack</div>
+        <div class="ctrl-btn red-btn" id="kill-all-btn" onclick="killAll()" style="display:none;"><i class="ti ti-skull" aria-hidden="true"></i>Kill process</div>
+      </div>
+    </div>
+    <div class="alert-box" id="alert-box">
+      <i class="ti ti-alert-triangle alert-icon" aria-hidden="true"></i>
+      <div>
+        <div class="alert-title">⚠ Ransomware behavior detected</div>
+        <div class="alert-text" id="alert-text">Process <code>encrypt.exe</code> (PID 4821) exceeded I/O velocity threshold — 73 file modifications/sec. Canary file triggered. Terminating process...</div>
+      </div>
+    </div>
+    <div class="metrics">
+      <div class="metric">
+        <div class="metric-label">I/O Velocity</div>
+        <div class="metric-val ok" id="io-val">2.1</div>
+        <div class="metric-sub">files/sec · baseline ≤50</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Shannon Entropy</div>
+        <div class="metric-val ok" id="ent-val">2.4</div>
+        <div class="metric-sub">avg · threshold ≥7.5</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">CPU load</div>
+        <div class="metric-val ok" id="cpu-val">0.8%</div>
+        <div class="metric-sub">agent overhead</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Threats blocked</div>
+        <div class="metric-val" id="threats-val">0</div>
+        <div class="metric-sub">this session</div>
+      </div>
+    </div>
+    <div class="panels">
+      <div class="panel">
+        <div class="panel-title">
+          I/O velocity monitor
+          <span class="badge badge-ok" id="io-badge">Normal</span>
+        </div>
+        <div class="chart-wrap"><canvas id="ioChart" role="img" aria-label="Real-time I/O velocity line chart showing files modified per second over time.">Real-time file I/O velocity data.</canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">
+          Shannon entropy analysis
+          <span class="badge badge-ok" id="ent-badge">Low</span>
+        </div>
+        <div class="chart-wrap"><canvas id="entChart" role="img" aria-label="Real-time Shannon entropy line chart showing file randomness score over time.">Real-time entropy data.</canvas></div>
+      </div>
+    </div>
+    <div class="panels">
+      <div class="panel">
+        <div class="panel-title">Canary file integrity <span id="canary-status" class="badge badge-ok">12/12 intact</span></div>
+        <div class="canary-grid" id="canary-grid"></div>
+        <div style="font-size:11px;color:#7d8590;margin-top:10px;">Hidden bait files in NTFS/ext4 — any access triggers immediate alert</div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Process entropy scores</div>
+        <div id="entropy-bars"></div>
+      </div>
+    </div>
+    <div class="panel-full">
+      <div class="panel-title">Active process watchlist</div>
+      <div id="proc-list"></div>
+    </div>
+    <div class="panel-full">
+      <div class="panel-title">Audit log <span style="font-weight:400;text-transform:none;font-size:11px;" id="log-count">(3 events)</span></div>
+      <table class="log-table" aria-label="Audit log of recent file system events">
+        <thead><tr><th>Time</th><th>Event</th><th>Path</th><th>Process</th><th>Risk</th></tr></thead>
+        <tbody id="log-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+var attackMode = false;
+var threatsBlocked = 0;
+var startTime = Date.now();
+var ioData = Array(20).fill(null).map(()=>+(Math.random()*3+0.5).toFixed(1));
+var entData = Array(20).fill(null).map(()=>+(Math.random()*1.5+1.5).toFixed(1));
+var labels = Array(20).fill('');
+var canaryState = Array(12).fill(true);
+var logEvents = [
+  {t:'08:14:02',e:'File modified',p:'/home/docs/report.docx',proc:'winword.exe',r:'low'},
+  {t:'08:14:55',e:'File created',p:'/tmp/~tmp4812.dat',proc:'chrome.exe',r:'low'},
+  {t:'08:15:30',e:'File renamed',p:'/home/docs/budget.xlsx',proc:'excel.exe',r:'low'},
+];
+var processes = [
+  {name:'winword.exe',pid:1024,io:1.2,ent:2.1,trusted:true,bar:'#DEFF9A'},
+  {name:'chrome.exe',pid:2048,io:0.8,ent:1.8,trusted:true,bar:'#DEFF9A'},
+  {name:'python.exe',pid:3012,io:0.3,ent:2.4,trusted:true,bar:'#DEFF9A'},
+  {name:'explorer.exe',pid:404,io:0.5,ent:1.9,trusted:true,bar:'#DEFF9A'},
+];
+function mkChart(id,color,max,label){
+  return new Chart(document.getElementById(id),{
+    type:'line',
+    data:{labels:labels,datasets:[{label:label,data:[...ioData],borderColor:color,backgroundColor:color+'22',borderWidth:1.5,pointRadius:0,fill:true,tension:.3}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:300},plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:true,min:0,max:max,grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#7d8590',font:{size:10},maxTicksLimit:4}}}}
+  });
+}
+var ioChart = mkChart('ioChart','#DEFF9A',80,'I/O');
+var entChart = mkChart('entChart','#f59e0b',8,'Entropy');
+entChart.data.datasets[0].data = [...entData];
+entChart.update();
+function renderCanary(){
+  var g=document.getElementById('canary-grid'); g.innerHTML='';
+  var alive=canaryState.filter(Boolean).length;
+  document.getElementById('canary-status').textContent=alive+'/12 intact';
+  document.getElementById('canary-status').className='badge '+(alive===12?'badge-ok':'badge-danger');
+  for(var i=0;i<12;i++){
+    var d=document.createElement('div');
+    d.className='canary-dot '+(canaryState[i]?'ok':'dead');
+    d.textContent=canaryState[i]?'C'+(i+1):'✕';
+    g.appendChild(d);
+  }
+}
+function renderEntBars(){
+  var el=document.getElementById('entropy-bars'); el.innerHTML='';
+  processes.forEach(function(p){
+    var pct=Math.min(100,(p.ent/8)*100);
+    var color=p.ent>7?'#ef4444':p.ent>5?'#f59e0b':'#DEFF9A';
+    el.innerHTML+='<div style="margin-bottom:10px;"><div class="section-label">'+p.name+' (PID '+p.pid+')</div><div class="entropy-bar"><div class="entropy-fill" style="width:'+pct+'%;background:'+color+';"></div></div><div style="font-size:10px;color:#7d8590;margin-top:2px;">Entropy: '+p.ent.toFixed(1)+' / 8.0</div></div>';
+  });
+}
+function renderProcs(){
+  var el=document.getElementById('proc-list'); el.innerHTML='';
+  processes.forEach(function(p){
+    var pct=Math.min(100,(p.io/80)*100);
+    var color=p.io>50?'#ef4444':p.io>20?'#f59e0b':'#DEFF9A';
+    var row=document.createElement('div'); row.className='proc-row';
+    row.innerHTML='<span class="proc-name">'+p.name+'</span><span class="proc-pid">PID '+p.pid+'</span><div class="proc-bar-wrap"><div class="proc-bar" style="width:'+pct+'%;background:'+color+';"></div></div><span style="font-size:12px;color:'+color+';min-width:60px;text-align:right;">'+p.io.toFixed(1)+' f/s</span><button class="kill-btn'+(p.trusted?'':' active')+'" onclick="this.textContent=\'Killed ✓\';this.disabled=true;this.style.opacity=\'0.5\';">Kill</button>';
+    el.appendChild(row);
+  });
+}
+function renderLog(){
+  var el=document.getElementById('log-body'); el.innerHTML='';
+  var shown=logEvents.slice(-8).reverse();
+  shown.forEach(function(e){
+    var tag=e.r==='high'?'tag-high':e.r==='med'?'tag-med':'tag-low';
+    el.innerHTML+='<tr><td style="color:#7d8590;white-space:nowrap;">'+e.t+'</td><td>'+e.e+'</td><td style="font-family:var(--font-mono,monospace);font-size:11px;color:#7d8590;">'+e.p+'</td><td>'+e.proc+'</td><td><span class="tag '+tag+'">'+e.r+'</span></td></tr>';
+  });
+  document.getElementById('log-count').textContent='('+logEvents.length+' events)';
+}
+function triggerAttack(){
+  if(attackMode) return;
+  attackMode=true;
+  var btn=document.querySelector('.ctrl-btn.primary');
+  btn.textContent='Attack in progress...'; btn.style.pointerEvents='none'; btn.style.opacity='.6';
+  document.getElementById('kill-all-btn').style.display='flex';
+  var step=0;
+  var atk=setInterval(function(){
+    step++;
+    var io=step<5?+(step*14+2).toFixed(1):+(70+Math.random()*5).toFixed(1);
+    var ent=step<3?+(step*1.5+2).toFixed(1):+(7.2+Math.random()*.5).toFixed(1);
+    ioData.push(io); ioData.shift();
+    entData.push(ent); entData.shift();
+    ioChart.data.datasets[0].data=[...ioData]; ioChart.update();
+    entChart.data.datasets[0].data=[...entData]; entChart.update();
+    document.getElementById('io-val').textContent=io;
+    document.getElementById('ent-val').textContent=ent;
+    document.getElementById('io-val').className='metric-val '+(io>50?'danger':io>20?'warn':'ok');
+    document.getElementById('ent-val').className='metric-val '+(ent>7?'danger':ent>5?'warn':'ok');
+    document.getElementById('io-badge').textContent=io>50?'CRITICAL':io>20?'Elevated':'Normal';
+    document.getElementById('io-badge').className='badge '+(io>50?'badge-danger':io>20?'badge-warn':'badge-ok');
+    document.getElementById('ent-badge').textContent=ent>7?'CRITICAL':ent>5?'Elevated':'Low';
+    document.getElementById('ent-badge').className='badge '+(ent>7?'badge-danger':ent>5?'badge-warn':'badge-ok');
+    if(step===3){
+      canaryState[4]=false; canaryState[9]=false; renderCanary();
+      var t=new Date(); var ts=t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0')+':'+t.getSeconds().toString().padStart(2,'0');
+      logEvents.push({t:ts,e:'⚠ Canary triggered',p:'/canary/bait_005.bin',proc:'encrypt.exe',r:'high'});
+      logEvents.push({t:ts,e:'Mass rename detected',p:'/home/docs/*.locked',proc:'encrypt.exe',r:'high'});
+      processes.push({name:'encrypt.exe',pid:4821,io:73.4,ent:7.9,trusted:false,bar:'#ef4444'});
+      renderProcs(); renderLog();
+    }
+    if(step===5){
+      document.getElementById('alert-box').className='alert-box visible';
+      document.getElementById('cpu-val').textContent='0.9%';
+      document.getElementById('sys-status').textContent='THREAT DETECTED';
+      document.getElementById('status-dot');
+    }
+    if(step>=8){clearInterval(atk);}
+  },700);
+}
+function killAll(){
+  attackMode=false;
+  threatsBlocked++;
+  document.getElementById('threats-val').textContent=threatsBlocked;
+  document.getElementById('threats-val').className='metric-val danger';
+  processes=processes.filter(function(p){return p.trusted;});
+  var t=new Date(); var ts=t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0')+':'+t.getSeconds().toString().padStart(2,'0');
+  logEvents.push({t:ts,e:'✓ Process terminated',p:'PID 4821 killed — SIGKILL via psutil',proc:'sentinel.py',r:'med'});
+  canaryState=Array(12).fill(true); renderCanary();
+  renderProcs(); renderLog(); renderEntBars();
+  document.getElementById('alert-box').className='alert-box';
+  document.getElementById('sys-status').textContent='System protected';
+  document.getElementById('kill-all-btn').style.display='none';
+  var btn=document.querySelector('.ctrl-btn.primary');
+  btn.innerHTML='<i class="ti ti-bug"></i>Simulate attack'; btn.style.pointerEvents=''; btn.style.opacity='1';
+  setTimeout(function(){
+    var io=+(Math.random()*3+0.5).toFixed(1); var ent=+(Math.random()*1.5+1.5).toFixed(1);
+    ioData=[...Array(20)].map(()=>+(Math.random()*3+0.5).toFixed(1));
+    entData=[...Array(20)].map(()=>+(Math.random()*1.5+1.5).toFixed(1));
+    ioChart.data.datasets[0].data=[...ioData]; ioChart.update();
+    entChart.data.datasets[0].data=[...entData]; entChart.update();
+    document.getElementById('io-val').textContent=io; document.getElementById('ent-val').textContent=ent;
+    document.getElementById('io-val').className='metric-val ok'; document.getElementById('ent-val').className='metric-val ok';
+    document.getElementById('io-badge').textContent='Normal'; document.getElementById('io-badge').className='badge badge-ok';
+    document.getElementById('ent-badge').textContent='Low'; document.getElementById('ent-badge').className='badge badge-ok';
+  },1000);
+}
+function tick(){
+  var now=Date.now(); var s=Math.floor((now-startTime)/1000);
+  var h=Math.floor(s/3600).toString().padStart(2,'0');
+  var m=Math.floor((s%3600)/60).toString().padStart(2,'0');
+  var sec=(s%60).toString().padStart(2,'0');
+  document.getElementById('runtime').textContent=h+':'+m+':'+sec;
+  var t=new Date(); document.getElementById('last-scan').textContent='Last scan: '+t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0')+':'+t.getSeconds().toString().padStart(2,'0');
+  if(!attackMode){
+    var io=+(Math.random()*3+0.5).toFixed(1); var ent=+(Math.random()*1.5+1.5).toFixed(1);
+    ioData.push(io); ioData.shift(); entData.push(ent); entData.shift();
+    ioChart.data.datasets[0].data=[...ioData]; ioChart.update();
+    entChart.data.datasets[0].data=[...entData]; entChart.update();
+    document.getElementById('io-val').textContent=io; document.getElementById('ent-val').textContent=ent;
+  }
+}
+renderCanary(); renderEntBars(); renderProcs(); renderLog();
+setInterval(tick,2000);
+</script>
+</body>
+</html>
