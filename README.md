@@ -40,37 +40,9 @@ When thresholds are exceeded, the agent **automatically terminates the offending
 
 <div align="center">
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                 User-Space Agent (Python 3.12)          │
-│                                                         │
-│  ┌──────────┐   ┌─────────────┐   ┌──────────────────┐ │
-│  │  Event    │──▶│  Metadata   │──▶│  Detection Engine │ │
-│  │ Listener  │   │Preprocessor │   │  (Velocity +     │ │
-│  │(watchdog) │   │             │   │   Entropy)       │ │
-│  └──────────┘   └─────────────┘   └────────┬─────────┘ │
-│                                             │           │
-│       ┌─────────────────┐          ┌────────▼─────────┐ │
-│       │  Canary Vault   │─ alert ─▶│   Mitigation     │ │
-│       │ (Hidden Traps)  │          │ (psutil / os.kill)│ │
-│       └─────────────────┘          └──────────────────┘ │
-│                                             │           │
-│                                    ┌────────▼─────────┐ │
-│                                    │ Persistence Layer │ │
-│                                    │   (SQLite3 Logs)  │ │
-│                                    └──────────────────┘ │
-├─────────────────────────────────────────────────────────┤
-│            OS Kernel Layer (Windows / Linux)             │
-│  ReadDirectoryChangesW  ·  inotify  ·  FSEvents          │
-├─────────────────────────────────────────────────────────┤
-│                  Local Data Sovereignty                   │
-│         sentinel.db  ·  Canary Bait Directory             │
-└─────────────────────────────────────────────────────────┘
-```
+![Architecture](assets/sentinel_arch.png)
 
 </div>
-
-> Full architecture diagram: [`assets/architecture.png`](assets/architecture.png)
 
 ### Key Design Decisions
 
@@ -141,5 +113,3 @@ sentinel/
 | **2. Architecture & Prototyping**  | 🔄 In Progress | System design, dashboard UI, core engine scaffolding              |
 | **3. Sandbox Testing**             | 📋 Planned     | VirtualBox isolation, crypto-simulation scripts, threshold tuning |
 | **4. Integration & Documentation** | 📋 Planned     | SQLite integration, resource profiling, final thesis document     |
-
---
