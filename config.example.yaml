@@ -1,0 +1,62 @@
+# ============================================================
+# Sentinel Agent — Configuration
+# ============================================================
+# Copy this file to `config.yaml` and adjust values to your
+# environment. All values below are defaults.
+
+# Directories to monitor for ransomware behavior.
+watch_paths:
+  - "C:\\Users\\%USERNAME%\\Documents"
+  - "C:\\Users\\%USERNAME%\\Desktop"
+  # Linux example:
+  # - "/home/user/Documents"
+
+# --- Detection thresholds ---
+detection:
+  # Max file-modification events/sec before flagging. Normal user
+  # activity rarely exceeds ~5; ransomware produces 50-200+.
+  velocity_threshold: 50.0
+
+  # Sliding window (seconds) for velocity calculation.
+  velocity_window: 1.0
+
+  # Shannon entropy threshold (0-8 scale). Encrypted data ≈ 7.8-8.0.
+  entropy_threshold: 7.5
+
+  # Bytes to sample from each modified file for entropy check.
+  entropy_sample_bytes: 4096
+
+  # How many independent signals must fire before triggering kill.
+  # 1 = aggressive, 2 = balanced (recommended), 3 = conservative.
+  confirmation_signals: 2
+
+# --- Canary (bait) file settings ---
+canary:
+  enabled: true
+  count: 12
+  vault_dirname: ".sentinel_canary"
+
+# --- Mitigation (response) settings ---
+mitigation:
+  # Set to false for monitor-only mode (no process killing).
+  enabled: true
+
+  # Processes that are never terminated, even if they trip thresholds.
+  whitelist:
+    - "7z.exe"
+    - "7zG.exe"
+    - "WinRAR.exe"
+    - "veracrypt.exe"
+    - "MsMpEng.exe"
+    - "tar"
+    - "gzip"
+    - "rsync"
+
+  # Seconds between SIGTERM and SIGKILL.
+  kill_grace_period: 0.5
+
+# SQLite database for the audit trail.
+audit_db: "sentinel_audit.db"
+
+# Logging: DEBUG | INFO | WARNING | ERROR
+log_level: "INFO"
