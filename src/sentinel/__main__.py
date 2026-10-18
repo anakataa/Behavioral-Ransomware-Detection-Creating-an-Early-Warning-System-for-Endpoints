@@ -92,7 +92,10 @@ def cmd_demo(args: argparse.Namespace, cfg: config.Config) -> int:
     sandbox = Path(args.sandbox).resolve()
     httpd = serve(cfg.audit_db, sandbox, args.port, files=args.files)  # creates the sandbox first
     cfg.watch_paths = [sandbox]  # never point the demo at real user folders
-    agent = Agent(cfg)
+    # Only the simulator launched from the dashboard may be killed; any other
+    # process the agent blames (a misattribution on a busy laptop) is alert-only.
+    agent = Agent(cfg, kill_filter=httpd.attack.owns)
+    print("Demo kill scope: only processes started by the dashboard's Launch attack button", flush=True)
     agent.start()
     threading.Thread(target=httpd.serve_forever, name="dashboard", daemon=True).start()
     _install_shutdown_handlers()

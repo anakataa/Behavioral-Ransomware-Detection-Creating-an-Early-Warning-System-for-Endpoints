@@ -71,7 +71,10 @@ audit DB (`audit_log` events + a 4 Hz `metrics` table the agent writes).
 - Attribution panel: which process the agent blamed, with its write/read ratios
 - Full audit log with risk classification
 
-`sentinel demo` points the agent **only at the sandbox** (default `./sandbox`).
+`sentinel demo` points the agent **only at the sandbox** (default `./sandbox`) and
+**only kills the simulator launched by the dashboard's button** (and its child
+processes) — any other process the agent blames stays alert-only, so a
+misattribution on a busy presentation laptop can't take down a real application.
 Add `--monitor-only` to rehearse without terminating anything. To watch an agent
 started separately (`sentinel run`), use `python -m sentinel dashboard` against the same `--db`.
 The server binds to 127.0.0.1 only; the attack/reset endpoints require a custom

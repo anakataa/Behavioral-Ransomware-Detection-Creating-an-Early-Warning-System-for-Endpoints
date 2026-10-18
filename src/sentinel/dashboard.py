@@ -29,6 +29,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+import psutil
+
 log = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -60,6 +62,23 @@ class AttackRunner:
 
     def running(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
+
+    def owns(self, pid: int) -> bool:
+        """True if ``pid`` is the running simulator launched here, or its descendant.
+
+        Descendants matter: a Windows venv ``python.exe`` is a launcher that
+        runs the real interpreter as a child, and that child does the writing.
+        ``sentinel demo`` passes this to the agent as its kill filter.
+        """
+        proc = self._proc
+        if proc is None or proc.poll() is not None:
+            return False
+        if pid == proc.pid:
+            return True
+        try:
+            return any(p.pid == proc.pid for p in psutil.Process(pid).parents())
+        except psutil.Error:
+            return False
 
     def reset(self) -> None:
         with self._lock:
@@ -232,4 +251,5 @@ def serve(db: Path, sandbox: Path, port: int = 8765, html: Path = DEFAULT_HTML,
     attack.ensure_sandbox()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(html, Path(db).resolve(), attack))
     httpd.daemon_threads = True
+    httpd.attack = attack  # type: ignore[attr-defined]  # `sentinel demo` needs attack.owns
     return httpd

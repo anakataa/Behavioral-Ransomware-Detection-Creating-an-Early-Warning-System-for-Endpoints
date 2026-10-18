@@ -38,8 +38,18 @@ METRICS_INTERVAL = 0.25        # seconds between telemetry rows for the dashboar
 
 
 class Agent:
-    def __init__(self, cfg: Config, audit: AuditLog | None = None) -> None:
+    def __init__(
+        self,
+        cfg: Config,
+        audit: AuditLog | None = None,
+        kill_filter: Callable[[int], bool] | None = None,
+    ) -> None:
+        """``kill_filter``: optional extra gate on termination. When given, a
+        correctly attributed culprit is only killed if ``kill_filter(pid)`` is
+        true; otherwise the verdict stays alert-only. ``sentinel demo`` uses it
+        to restrict kills to the simulator the dashboard launched."""
         self.cfg = cfg
+        self.kill_filter = kill_filter
         d = cfg.detection
         self.audit = audit or AuditLog(cfg.audit_db)
         db = Path(self.audit.db_path).resolve()
@@ -223,6 +233,8 @@ class Agent:
         elif target.name in self.whitelist:
             # The burst is explained by a trusted tool; the runner-up is not the culprit.
             outcome = f"best match {target.name} is whitelisted"
+        elif self.kill_filter is not None and not self.kill_filter(target.pid):
+            outcome = f"{target.name} (pid {target.pid}) is outside the kill scope"
         if outcome:
             log.error("%s; alert only", outcome)
 
