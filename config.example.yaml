@@ -30,6 +30,14 @@ detection:
   # 1 = aggressive, 2 = balanced (recommended), 3 = conservative.
   confirmation_signals: 2
 
+  # Entropy signal fires only after this many distinct high-entropy
+  # writes within entropy_window seconds (one JPEG/ZIP proves nothing).
+  entropy_min_files: 3
+  entropy_window: 5.0
+
+  # Seconds a fired signal stays "hot" while waiting for a second one.
+  correlation_window: 10.0
+
 # --- Canary (bait) file settings ---
 canary:
   enabled: true

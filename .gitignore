@@ -28,3 +28,6 @@ sentinel_audit.db
 # Testing
 *.log
 sandbox/
+
+# Local config
+config.yaml
