@@ -56,17 +56,29 @@ The project includes an interactive HTML dashboard prototype for real-time monit
 
 <div align="center">
 
-**[▶ Open `dashboard/sentinel_dashboard.html` in any browser to try it live](dashboard/sentinel_dashboard.html)**
+**Live demo — one command:** `python -m sentinel demo` → opens `http://127.0.0.1:8765/`
 
 </div>
 
-Features:
+The dashboard is wired to the real agent: everything on it is read from the local
+audit DB (`audit_log` events + a 4 Hz `metrics` table the agent writes).
 
-- Real-time I/O velocity and Shannon entropy charts
-- Canary file integrity grid (12 bait files)
-- Active process watchlist with kill controls
-- Simulated ransomware attack demo (click _"Simulate attack"_)
+- Real-time I/O velocity and Shannon entropy charts with detection thresholds
+- Canary file integrity grid and the currently "hot" signals (2 of 3 needed to kill)
+- **Launch attack** button: runs `scripts/mock_ransomware.py` against the demo sandbox
+  (standard or stealth profile, 10 / 20 / 60 files/s or max) — watch the agent detect and kill it
+- Attack panel: plaintext vs. encrypted documents, time to kill, outcome
+- Attribution panel: which process the agent blamed, with its write/read ratios
 - Full audit log with risk classification
+
+`sentinel demo` points the agent **only at the sandbox** (default `./sandbox`) and
+**only kills the simulator launched by the dashboard's button** (and its child
+processes) — any other process the agent blames stays alert-only, so a
+misattribution on a busy presentation laptop can't take down a real application.
+Add `--monitor-only` to rehearse without terminating anything. To watch an agent
+started separately (`sentinel run`), use `python -m sentinel dashboard` against the same `--db`.
+The server binds to 127.0.0.1 only; the attack/reset endpoints require a custom
+header, so other web pages can't trigger them.
 
 ## Project Structure
 
@@ -83,7 +95,8 @@ sentinel/
 │   ├── audit.py               # SQLite audit trail
 │   ├── config.py              # YAML config loader with defaults
 │   ├── agent.py               # wires the pipeline together
-│   └── __main__.py            # CLI: run | canary | audit
+│   ├── dashboard.py           # local HTTP server: live dashboard + demo attack API
+│   └── __main__.py            # CLI: run | canary | audit | dashboard | demo
 ├── scripts/
 │   └── mock_ransomware.py     # SAFE behavioral simulator (sandbox-only)
 ├── tests/                     # unit tests + end-to-end agent-vs-mock tests
@@ -128,10 +141,14 @@ against a live agent).
 ### How the agent decides whom to kill
 
 `watchdog` reports *what* changed, never *who*. Without a kernel driver the agent
-attributes the burst from user space (`attribution.py`): per-process write counters
-are sampled (10 Hz while a burst is suspected), and the culprit must have written
-0.9–4× the bytes observed changing in the watched folders. No match, two equally
-plausible matches, or a whitelisted best match → **alert only, no kill**.
+attributes the burst from user space (`attribution.py`): per-process I/O counters
+are sampled (10 Hz while a burst is suspected). The culprit must have **written**
+0.9–4× the bytes observed changing in the watched folders, and — because
+crypto-ransomware has to read what it encrypts — **read** 0.5–8× of it too. The match
+must hold in two consecutive windows (burst start, then a 0.6 s confirm window).
+No match, two equally plausible matches, or a whitelisted best match → **alert only,
+no kill**. Measured on a busy desktop (browser, Steam, IDE running): 0 wrong
+decisions in 68 verdicts across 12 attacks at 10–max files/s.
 
 ## Tech Stack
 

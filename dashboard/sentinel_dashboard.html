@@ -1,343 +1,432 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel Dashboard</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:var(--font-sans,'Inter',sans-serif);background:#0d1117;color:#e6edf3;min-height:100vh;padding:0;}
-.shell{display:grid;grid-template-columns:200px 1fr;min-height:100vh;}
+body{font-family:'Inter',system-ui,sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh;}
+code,.mono{font-family:ui-monospace,Consolas,monospace;}
+.shell{display:grid;grid-template-columns:210px 1fr;min-height:100vh;}
 .sidebar{background:#161b22;border-right:1px solid #21262d;padding:20px 0;display:flex;flex-direction:column;}
 .logo{padding:0 16px 20px;border-bottom:1px solid #21262d;margin-bottom:16px;}
-.logo-name{font-size:15px;font-weight:500;color:#e6edf3;letter-spacing:.5px;}
+.logo-name{font-size:15px;font-weight:600;letter-spacing:.5px;}
 .logo-sub{font-size:11px;color:#7d8590;margin-top:2px;}
-.status-dot{width:8px;height:8px;border-radius:50%;background:#DEFF9A;display:inline-block;margin-right:6px;animation:pulse 2s infinite;}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
-.nav-item{display:flex;align-items:center;gap:10px;padding:8px 16px;font-size:13px;color:#7d8590;cursor:pointer;border-left:2px solid transparent;transition:all .15s;}
-.nav-item.active{color:#DEFF9A;border-left-color:#DEFF9A;background:rgba(222,255,154,.06);}
-.nav-item:hover:not(.active){color:#e6edf3;background:rgba(255,255,255,.04);}
-.nav-icon{font-size:16px;width:18px;text-align:center;}
-.main{padding:20px;display:flex;flex-direction:column;gap:16px;overflow:auto;}
-.topbar{display:flex;align-items:center;justify-content:space-between;}
-.topbar-title{font-size:14px;font-weight:500;color:#e6edf3;}
+.status{display:flex;align-items:center;gap:6px;font-size:12px;margin-top:10px;}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;animation:pulse 2s infinite;}
+.st-ok{color:#DEFF9A;} .st-ok .status-dot{background:#DEFF9A;}
+.st-warn{color:#f59e0b;} .st-warn .status-dot{background:#f59e0b;}
+.st-danger{color:#ef4444;} .st-danger .status-dot{background:#ef4444;animation-duration:.6s;}
+.st-off{color:#7d8590;} .st-off .status-dot{background:#7d8590;animation:none;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+.side-section{padding:0 16px;margin-bottom:14px;}
+.side-label{font-size:11px;color:#7d8590;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;}
+.side-val{font-size:13px;word-break:break-all;}
+.side-foot{margin-top:auto;padding:16px;border-top:1px solid #21262d;font-size:11px;color:#7d8590;}
+.main{padding:20px;display:flex;flex-direction:column;gap:16px;overflow:auto;min-width:0;}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.topbar-title{font-size:14px;font-weight:500;}
 .topbar-meta{font-size:12px;color:#7d8590;}
-.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 8px;border-radius:4px;font-weight:500;}
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+select,.ctrl-btn{font:inherit;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #30363d;background:#0d1117;color:#c9d1d9;}
+.ctrl-btn{cursor:pointer;transition:all .15s;background:transparent;}
+.ctrl-btn:hover:not(:disabled){background:rgba(255,255,255,.05);border-color:#7d8590;}
+.ctrl-btn:disabled{opacity:.45;cursor:not-allowed;}
+.ctrl-btn.red{border-color:rgba(239,68,68,.5);color:#ef4444;}
+.ctrl-btn.red:hover:not(:disabled){background:rgba(239,68,68,.1);}
+.badge{display:inline-flex;align-items:center;font-size:11px;padding:3px 8px;border-radius:4px;font-weight:500;}
 .badge-ok{background:rgba(222,255,154,.12);color:#DEFF9A;}
 .badge-warn{background:rgba(245,158,11,.12);color:#f59e0b;}
 .badge-danger{background:rgba(239,68,68,.12);color:#ef4444;}
+.badge-off{background:rgba(125,133,144,.12);color:#7d8590;}
+.banner{border-radius:6px;padding:12px 14px;font-size:12px;line-height:1.6;display:none;}
+.banner.visible{display:block;}
+.banner-off{background:rgba(125,133,144,.08);border:1px solid #30363d;color:#c9d1d9;}
+.banner-alert{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);color:#fca5a5;}
+.banner-ok{background:rgba(222,255,154,.06);border:1px solid rgba(222,255,154,.25);color:#e6edf3;}
+.banner-title{font-size:13px;font-weight:600;margin-bottom:2px;}
+.banner-alert .banner-title{color:#ef4444;} .banner-ok .banner-title{color:#DEFF9A;}
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
 .metric{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:14px 16px;}
 .metric-label{font-size:11px;color:#7d8590;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
-.metric-val{font-size:22px;font-weight:500;color:#e6edf3;}
+.metric-val{font-size:22px;font-weight:500;font-variant-numeric:tabular-nums;}
 .metric-sub{font-size:11px;color:#7d8590;margin-top:4px;}
-.metric-val.ok{color:#DEFF9A;}
-.metric-val.warn{color:#f59e0b;}
-.metric-val.danger{color:#ef4444;}
+.ok{color:#DEFF9A;} .warn{color:#f59e0b;} .danger{color:#ef4444;}
 .panels{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-.panel{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;}
-.panel-full{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;}
-.panel-title{font-size:12px;font-weight:500;color:#7d8590;text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;}
-.chart-wrap{position:relative;height:140px;}
-.canary-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:4px;}
+.panel{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;min-width:0;}
+.panel-title{font-size:12px;font-weight:500;color:#7d8590;text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.chart-wrap{position:relative;height:150px;}
+.canary-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;}
 .canary-dot{height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;}
 .canary-dot.ok{background:rgba(222,255,154,.12);color:#DEFF9A;border:1px solid rgba(222,255,154,.2);}
 .canary-dot.dead{background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.3);animation:blink .6s infinite;}
+.canary-dot.off{background:#0d1117;color:#30363d;border:1px dashed #30363d;}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+.hint{font-size:11px;color:#7d8590;margin-top:10px;line-height:1.5;}
+.progress{height:14px;background:#21262d;border-radius:4px;overflow:hidden;display:flex;margin:6px 0 4px;}
+.progress div{height:100%;transition:width .4s;}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;font-size:12px;margin-top:12px;}
+.kv dt{color:#7d8590;} .kv dd{color:#e6edf3;font-variant-numeric:tabular-nums;}
+.suspect{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(33,38,45,.6);font-size:12px;}
+.suspect:last-child{border-bottom:none;}
+.suspect-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.empty{font-size:12px;color:#7d8590;padding:6px 0;}
+.log-wrap{max-height:340px;overflow:auto;}
 .log-table{width:100%;font-size:12px;border-collapse:collapse;}
-.log-table th{font-size:11px;color:#7d8590;font-weight:500;text-align:left;padding:6px 8px;border-bottom:1px solid #21262d;}
+.log-table th{font-size:11px;color:#7d8590;font-weight:500;text-align:left;padding:6px 8px;border-bottom:1px solid #21262d;position:sticky;top:0;background:#161b22;}
 .log-table td{padding:7px 8px;border-bottom:1px solid rgba(33,38,45,.6);color:#c9d1d9;vertical-align:top;}
-.log-table tr:last-child td{border-bottom:none;}
-.tag{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:500;}
+.log-table td.path{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#7d8590;word-break:break-all;}
+.log-table tr.fresh{animation:flash 1.5s;}
+@keyframes flash{from{background:rgba(222,255,154,.12);}to{background:transparent;}}
+.tag{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:500;white-space:nowrap;}
 .tag-low{background:rgba(222,255,154,.1);color:#DEFF9A;}
 .tag-med{background:rgba(245,158,11,.1);color:#f59e0b;}
 .tag-high{background:rgba(239,68,68,.1);color:#ef4444;}
-.proc-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(33,38,45,.6);}
-.proc-row:last-child{border-bottom:none;}
-.proc-name{font-size:13px;color:#e6edf3;flex:1;}
-.proc-pid{font-size:11px;color:#7d8590;min-width:50px;}
-.proc-bar-wrap{flex:1;height:6px;background:#21262d;border-radius:3px;overflow:hidden;}
-.proc-bar{height:100%;border-radius:3px;transition:width .5s;}
-.kill-btn{font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid #21262d;background:transparent;color:#7d8590;cursor:pointer;transition:all .15s;}
-.kill-btn:hover{border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,.08);}
-.kill-btn.active{border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,.15);}
-.entropy-bar{height:12px;background:#21262d;border-radius:3px;overflow:hidden;margin-bottom:6px;}
-.entropy-fill{height:100%;border-radius:3px;transition:width .6s;}
-.section-label{font-size:11px;color:#7d8590;margin-bottom:4px;}
-.alert-box{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:6px;padding:10px 14px;display:flex;align-items:flex-start;gap:10px;display:none;}
-.alert-box.visible{display:flex;}
-.alert-icon{color:#ef4444;font-size:18px;flex-shrink:0;margin-top:1px;}
-.alert-text{font-size:12px;color:#fca5a5;line-height:1.5;}
-.alert-title{font-size:13px;font-weight:500;color:#ef4444;margin-bottom:3px;}
-.controls{display:flex;gap:8px;align-items:center;}
-.ctrl-btn{font-size:12px;padding:5px 12px;border-radius:5px;border:1px solid #30363d;background:transparent;color:#c9d1d9;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px;}
-.ctrl-btn:hover{background:rgba(255,255,255,.05);border-color:#7d8590;}
-.ctrl-btn.primary{border-color:#DEFF9A;color:#DEFF9A;}
-.ctrl-btn.primary:hover{background:rgba(222,255,154,.08);}
-.ctrl-btn.red-btn{border-color:rgba(239,68,68,.4);color:#ef4444;}
-.ctrl-btn.red-btn:hover{background:rgba(239,68,68,.1);}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr;}
+  .sidebar{border-right:none;border-bottom:1px solid #21262d;}
+  .metrics{grid-template-columns:repeat(2,1fr);}
+  .panels{grid-template-columns:1fr;}
+  .main{padding:16px;}
+}
 </style>
 </head>
 <body>
-<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Sentinel Agent — cybersecurity dashboard showing real-time ransomware detection status, file I/O velocity, entropy analysis, canary file integrity, and active process watchlist.</h2>
 <div class="shell">
-  <div class="sidebar">
+  <aside class="sidebar">
     <div class="logo">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-        <i class="ti ti-shield-lock" style="font-size:20px;color:#DEFF9A;" aria-hidden="true"></i>
-        <div>
-          <div class="logo-name">SENTINEL</div>
-          <div class="logo-sub">Agent v1.0</div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#DEFF9A;">
-        <span class="status-dot"></span><span id="sys-status">System protected</span>
-      </div>
+      <div class="logo-name">SENTINEL</div>
+      <div class="logo-sub">Behavioral ransomware agent</div>
+      <div class="status st-off" id="status"><span class="status-dot"></span><span id="status-text">Connecting…</span></div>
     </div>
-    <nav>
-      <div class="nav-item active"><i class="ti ti-layout-dashboard nav-icon" aria-hidden="true"></i>Dashboard</div>
-      <div class="nav-item"><i class="ti ti-eye nav-icon" aria-hidden="true"></i>File monitor</div>
-      <div class="nav-item"><i class="ti ti-activity nav-icon" aria-hidden="true"></i>Processes</div>
-      <div class="nav-item"><i class="ti ti-database nav-icon" aria-hidden="true"></i>Audit logs</div>
-      <div class="nav-item"><i class="ti ti-settings nav-icon" aria-hidden="true"></i>Thresholds</div>
-    </nav>
-    <div style="margin-top:auto;padding:16px;border-top:1px solid #21262d;">
-      <div style="font-size:11px;color:#7d8590;margin-bottom:8px;">Runtime</div>
-      <div style="font-size:13px;color:#e6edf3;" id="runtime">00:00:00</div>
-      <div style="font-size:11px;color:#7d8590;margin-top:6px;">Python 3.12 · watchdog · psutil</div>
-    </div>
-  </div>
-  <div class="main">
+    <div class="side-section"><div class="side-label">Mode</div><div class="side-val" id="mode">—</div></div>
+    <div class="side-section"><div class="side-label">Agent uptime</div><div class="side-val mono" id="uptime">—</div></div>
+    <div class="side-section"><div class="side-label">Watching</div><div class="side-val mono" id="watching" style="font-size:11px;">—</div></div>
+    <div class="side-section"><div class="side-label">Sandbox</div><div class="side-val mono" id="sandbox-path" style="font-size:11px;">—</div></div>
+    <div class="side-foot">Live data from the local audit DB.<br>No cloud, no telemetry.</div>
+  </aside>
+
+  <main class="main">
     <div class="topbar">
       <div>
         <div class="topbar-title">Detection Overview</div>
-        <div class="topbar-meta" id="last-scan">Last scan: just now</div>
+        <div class="topbar-meta" id="last-update">Waiting for agent…</div>
       </div>
       <div class="controls">
-        <div class="ctrl-btn primary" onclick="triggerAttack()"><i class="ti ti-bug" aria-hidden="true"></i>Simulate attack</div>
-        <div class="ctrl-btn red-btn" id="kill-all-btn" onclick="killAll()" style="display:none;"><i class="ti ti-skull" aria-hidden="true"></i>Kill process</div>
+        <select id="profile" aria-label="Attack profile">
+          <option value="standard">Standard — walks every folder</option>
+          <option value="stealth">Stealth — skips hidden canary vault</option>
+        </select>
+        <select id="rate" aria-label="Encryption speed">
+          <option value="10">10 files/s</option>
+          <option value="20" selected>20 files/s</option>
+          <option value="60">60 files/s</option>
+          <option value="0">Max speed</option>
+        </select>
+        <button class="ctrl-btn red" id="attack-btn" disabled>Launch attack</button>
+        <button class="ctrl-btn" id="reset-btn" disabled>Reset sandbox</button>
       </div>
     </div>
-    <div class="alert-box" id="alert-box">
-      <i class="ti ti-alert-triangle alert-icon" aria-hidden="true"></i>
-      <div>
-        <div class="alert-title">⚠ Ransomware behavior detected</div>
-        <div class="alert-text" id="alert-text">Process <code>encrypt.exe</code> (PID 4821) exceeded I/O velocity threshold — 73 file modifications/sec. Canary file triggered. Terminating process...</div>
-      </div>
+
+    <div class="banner banner-off" id="offline-banner">
+      <div class="banner-title">Dashboard server not reachable</div>
+      Start the live demo from the repo root: <code>python -m sentinel demo</code>
+      (or <code>python -m sentinel run --watch sandbox</code> + <code>python -m sentinel dashboard</code>),
+      then open <code>http://127.0.0.1:8765/</code>.
     </div>
+    <div class="banner" id="verdict-banner">
+      <div class="banner-title" id="verdict-title"></div>
+      <div id="verdict-text"></div>
+    </div>
+
     <div class="metrics">
-      <div class="metric">
-        <div class="metric-label">I/O Velocity</div>
-        <div class="metric-val ok" id="io-val">2.1</div>
-        <div class="metric-sub">files/sec · baseline ≤50</div>
-      </div>
-      <div class="metric">
-        <div class="metric-label">Shannon Entropy</div>
-        <div class="metric-val ok" id="ent-val">2.4</div>
-        <div class="metric-sub">avg · threshold ≥7.5</div>
-      </div>
-      <div class="metric">
-        <div class="metric-label">CPU load</div>
-        <div class="metric-val ok" id="cpu-val">0.8%</div>
-        <div class="metric-sub">agent overhead</div>
-      </div>
-      <div class="metric">
-        <div class="metric-label">Threats blocked</div>
-        <div class="metric-val" id="threats-val">0</div>
-        <div class="metric-sub">this session</div>
-      </div>
+      <div class="metric"><div class="metric-label">I/O velocity</div><div class="metric-val ok" id="m-vel">—</div><div class="metric-sub" id="m-vel-sub">events/s · threshold 50</div></div>
+      <div class="metric"><div class="metric-label">Shannon entropy</div><div class="metric-val ok" id="m-ent">—</div><div class="metric-sub">bits/byte · threshold 7.5</div></div>
+      <div class="metric"><div class="metric-label">Agent CPU</div><div class="metric-val ok" id="m-cpu">—</div><div class="metric-sub">share of whole machine</div></div>
+      <div class="metric"><div class="metric-label">Threats blocked</div><div class="metric-val" id="m-blocked">0</div><div class="metric-sub">since agent start</div></div>
     </div>
+
     <div class="panels">
       <div class="panel">
-        <div class="panel-title">
-          I/O velocity monitor
-          <span class="badge badge-ok" id="io-badge">Normal</span>
-        </div>
-        <div class="chart-wrap"><canvas id="ioChart" role="img" aria-label="Real-time I/O velocity line chart showing files modified per second over time.">Real-time file I/O velocity data.</canvas></div>
+        <div class="panel-title">I/O velocity <span class="badge badge-off" id="vel-badge">—</span></div>
+        <div class="chart-wrap"><canvas id="velChart" role="img" aria-label="File-system events per second over the last 30 seconds"></canvas></div>
       </div>
       <div class="panel">
-        <div class="panel-title">
-          Shannon entropy analysis
-          <span class="badge badge-ok" id="ent-badge">Low</span>
-        </div>
-        <div class="chart-wrap"><canvas id="entChart" role="img" aria-label="Real-time Shannon entropy line chart showing file randomness score over time.">Real-time entropy data.</canvas></div>
+        <div class="panel-title">Shannon entropy of written files <span class="badge badge-off" id="ent-badge">—</span></div>
+        <div class="chart-wrap"><canvas id="entChart" role="img" aria-label="Maximum sampled entropy per interval over the last 30 seconds"></canvas></div>
       </div>
     </div>
+
     <div class="panels">
       <div class="panel">
-        <div class="panel-title">Canary file integrity <span id="canary-status" class="badge badge-ok">12/12 intact</span></div>
+        <div class="panel-title">Canary file integrity <span class="badge badge-off" id="canary-badge">—</span></div>
         <div class="canary-grid" id="canary-grid"></div>
-        <div style="font-size:11px;color:#7d8590;margin-top:10px;">Hidden bait files in NTFS/ext4 — any access triggers immediate alert</div>
+        <div class="hint">Hidden bait files in the watched folder. Re-armed automatically after every response.</div>
+        <div class="panel-title" style="margin:16px 0 8px;">Hot signals <span style="text-transform:none;font-weight:400;">2 of 3 needed to kill</span></div>
+        <div id="signals" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
       </div>
       <div class="panel">
-        <div class="panel-title">Process entropy scores</div>
-        <div id="entropy-bars"></div>
+        <div class="panel-title">Simulated attack <span class="badge badge-off" id="attack-badge">Idle</span></div>
+        <div style="font-size:12px;color:#7d8590;">Sandbox documents</div>
+        <div class="progress" aria-label="Plaintext vs encrypted documents">
+          <div id="bar-plain" style="background:#DEFF9A;width:100%;"></div>
+          <div id="bar-enc" style="background:#ef4444;width:0;"></div>
+        </div>
+        <div style="font-size:11px;color:#7d8590;" id="bar-label">—</div>
+        <dl class="kv">
+          <dt>Process</dt><dd id="a-proc">—</dd>
+          <dt>Profile</dt><dd id="a-profile">—</dd>
+          <dt>Encrypted</dt><dd id="a-encrypted">—</dd>
+          <dt>Time to kill</dt><dd id="a-ttk">—</dd>
+          <dt>Outcome</dt><dd id="a-outcome">—</dd>
+        </dl>
       </div>
     </div>
-    <div class="panel-full">
-      <div class="panel-title">Active process watchlist</div>
-      <div id="proc-list"></div>
+
+    <div class="panel">
+      <div class="panel-title">Attribution — who wrote the files <span style="text-transform:none;font-weight:400;" id="attr-meta"></span></div>
+      <div id="suspects"><div class="empty">No verdict yet. Launch an attack to see which process the agent blames and why.</div></div>
+      <div class="hint">The culprit must have written 0.9–4× (and read 0.5–8×) the bytes observed changing in the watched folder, in two consecutive windows. No match, two equal matches, or a whitelisted match → alert only, no kill.</div>
     </div>
-    <div class="panel-full">
-      <div class="panel-title">Audit log <span style="font-weight:400;text-transform:none;font-size:11px;" id="log-count">(3 events)</span></div>
-      <table class="log-table" aria-label="Audit log of recent file system events">
-        <thead><tr><th>Time</th><th>Event</th><th>Path</th><th>Process</th><th>Risk</th></tr></thead>
-        <tbody id="log-body"></tbody>
-      </table>
+
+    <div class="panel">
+      <div class="panel-title">Audit log <span style="text-transform:none;font-weight:400;" id="log-count"></span></div>
+      <div class="log-wrap">
+        <table class="log-table" aria-label="Audit log">
+          <thead><tr><th>Time</th><th>Event</th><th>Path</th><th>Process</th><th>Risk</th></tr></thead>
+          <tbody id="log-body"></tbody>
+        </table>
+      </div>
     </div>
-  </div>
+  </main>
 </div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
-var attackMode = false;
-var threatsBlocked = 0;
-var startTime = Date.now();
-var ioData = Array(20).fill(null).map(()=>+(Math.random()*3+0.5).toFixed(1));
-var entData = Array(20).fill(null).map(()=>+(Math.random()*1.5+1.5).toFixed(1));
-var labels = Array(20).fill('');
-var canaryState = Array(12).fill(true);
-var logEvents = [
-  {t:'08:14:02',e:'File modified',p:'/home/docs/report.docx',proc:'winword.exe',r:'low'},
-  {t:'08:14:55',e:'File created',p:'/tmp/~tmp4812.dat',proc:'chrome.exe',r:'low'},
-  {t:'08:15:30',e:'File renamed',p:'/home/docs/budget.xlsx',proc:'excel.exe',r:'low'},
-];
-var processes = [
-  {name:'winword.exe',pid:1024,io:1.2,ent:2.1,trusted:true,bar:'#DEFF9A'},
-  {name:'chrome.exe',pid:2048,io:0.8,ent:1.8,trusted:true,bar:'#DEFF9A'},
-  {name:'python.exe',pid:3012,io:0.3,ent:2.4,trusted:true,bar:'#DEFF9A'},
-  {name:'explorer.exe',pid:404,io:0.5,ent:1.9,trusted:true,bar:'#DEFF9A'},
-];
-function mkChart(id,color,max,label){
-  return new Chart(document.getElementById(id),{
-    type:'line',
-    data:{labels:labels,datasets:[{label:label,data:[...ioData],borderColor:color,backgroundColor:color+'22',borderWidth:1.5,pointRadius:0,fill:true,tension:.3}]},
-    options:{responsive:true,maintainAspectRatio:false,animation:{duration:300},plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:true,min:0,max:max,grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#7d8590',font:{size:10},maxTicksLimit:4}}}}
+"use strict";
+const POLL_MS = 500, POINTS = 120;              // 120 x 250 ms telemetry = 30 s of history
+const VEL_T = 50, ENT_T = 7.5;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const hhmmss = ts => new Date(ts * 1000).toLocaleTimeString([], {hour12: false});
+
+let lastId = 0, lastMetricTs = null, events = [], online = false, lastVerdict = null, lastMitigation = null, attack = null;
+const vel = [], ent = [];
+
+function mkChart(id, color, max) {
+  return new Chart($(id), {
+    type: "line",
+    data: {labels: [], datasets: [
+      {data: [], borderColor: color, backgroundColor: color + "22", borderWidth: 1.5, pointRadius: 0, fill: true, tension: .25, spanGaps: true},
+      {data: [], borderColor: "#ef4444", borderDash: [4, 4], borderWidth: 1, pointRadius: 0, fill: false},
+    ]},
+    options: {responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {legend: {display: false}, tooltip: {enabled: false}},
+      scales: {x: {display: false},
+               y: {min: 0, suggestedMax: max, grid: {color: "rgba(255,255,255,.04)"}, ticks: {color: "#7d8590", font: {size: 10}, maxTicksLimit: 5}}}},
   });
 }
-var ioChart = mkChart('ioChart','#DEFF9A',80,'I/O');
-var entChart = mkChart('entChart','#f59e0b',8,'Entropy');
-entChart.data.datasets[0].data = [...entData];
-entChart.update();
-function renderCanary(){
-  var g=document.getElementById('canary-grid'); g.innerHTML='';
-  var alive=canaryState.filter(Boolean).length;
-  document.getElementById('canary-status').textContent=alive+'/12 intact';
-  document.getElementById('canary-status').className='badge '+(alive===12?'badge-ok':'badge-danger');
-  for(var i=0;i<12;i++){
-    var d=document.createElement('div');
-    d.className='canary-dot '+(canaryState[i]?'ok':'dead');
-    d.textContent=canaryState[i]?'C'+(i+1):'✕';
-    g.appendChild(d);
+const velChart = mkChart("velChart", "#DEFF9A", 80);
+const entChart = mkChart("entChart", "#f59e0b", 8);
+entChart.options.scales.y.max = 8;
+
+function pushMetric(m) {
+  vel.push(m.velocity); ent.push(m.entropy);
+  if (vel.length > POINTS) { vel.shift(); ent.shift(); }
+}
+function redrawCharts() {
+  for (const [chart, data, t] of [[velChart, vel, VEL_T], [entChart, ent, ENT_T]]) {
+    chart.data.labels = data.map(() => "");
+    chart.data.datasets[0].data = data.slice();
+    chart.data.datasets[1].data = data.map(() => t);
+    chart.update("none");
   }
 }
-function renderEntBars(){
-  var el=document.getElementById('entropy-bars'); el.innerHTML='';
-  processes.forEach(function(p){
-    var pct=Math.min(100,(p.ent/8)*100);
-    var color=p.ent>7?'#ef4444':p.ent>5?'#f59e0b':'#DEFF9A';
-    el.innerHTML+='<div style="margin-bottom:10px;"><div class="section-label">'+p.name+' (PID '+p.pid+')</div><div class="entropy-bar"><div class="entropy-fill" style="width:'+pct+'%;background:'+color+';"></div></div><div style="font-size:10px;color:#7d8590;margin-top:2px;">Entropy: '+p.ent.toFixed(1)+' / 8.0</div></div>';
+const level = (v, warn, crit) => v == null ? "ok" : v > crit ? "danger" : v > warn ? "warn" : "ok";
+function setBadge(el, cls, text) { el.className = "badge badge-" + cls; el.textContent = text; }
+
+function renderMetrics(latest) {
+  if (!latest) return;
+  const lv = level(latest.velocity, VEL_T * .4, VEL_T);
+  $("m-vel").textContent = latest.velocity.toFixed(0); $("m-vel").className = "metric-val " + lv;
+  setBadge($("vel-badge"), lv === "danger" ? "danger" : lv === "warn" ? "warn" : "ok", lv === "danger" ? "CRITICAL" : lv === "warn" ? "Elevated" : "Normal");
+  const recentEnt = ent.slice(-8).filter(v => v != null);
+  const e = recentEnt.length ? Math.max(...recentEnt) : null;
+  const le = level(e, 6, ENT_T);
+  $("m-ent").textContent = e == null ? "—" : e.toFixed(2); $("m-ent").className = "metric-val " + le;
+  setBadge($("ent-badge"), le === "danger" ? "danger" : le === "warn" ? "warn" : "ok", e == null ? "No writes" : le === "danger" ? "Encrypted-like" : le === "warn" ? "Compressed-like" : "Low");
+  $("m-cpu").textContent = latest.cpu == null ? "—" : latest.cpu.toFixed(1) + "%";
+  $("m-cpu").className = "metric-val " + level(latest.cpu, 5, 20);
+
+  const state = latest.canary_state || "";
+  const grid = $("canary-grid"); grid.innerHTML = "";
+  const n = Math.max(state.length, 12);
+  for (let i = 0; i < n; i++) {
+    const d = document.createElement("div");
+    const c = state[i];
+    d.className = "canary-dot " + (c === "1" ? "ok" : c === "0" ? "dead" : "off");
+    d.textContent = c === "0" ? "✕" : "C" + (i + 1);
+    grid.appendChild(d);
+  }
+  const intact = [...state].filter(c => c === "1").length;
+  setBadge($("canary-badge"), !state.length ? "off" : intact === state.length ? "ok" : "danger",
+           state.length ? `${intact}/${state.length} intact` : "disabled");
+
+  const hot = (latest.active_signals || "").split(",").filter(Boolean);
+  $("signals").innerHTML = ["velocity", "entropy", "canary"].map(k =>
+    `<span class="badge ${hot.includes(k) ? "badge-danger" : "badge-off"}">${k}</span>`).join("");
+}
+
+function risk(e) {
+  if (e.level === "ALERT" || e.level === "ACTION") return ["high", "tag-high"];
+  if (e.level === "WARNING") return ["med", "tag-med"];
+  return ["low", "tag-low"];
+}
+function renderLog(freshIds) {
+  const rows = events.slice(-60).reverse().map(e => {
+    const [r, cls] = risk(e);
+    const proc = e.process ? `${esc(e.process)} <span style="color:#7d8590">[${e.pid}]</span>` : "—";
+    return `<tr class="${freshIds.has(e.id) ? "fresh" : ""}"><td style="color:#7d8590;white-space:nowrap;">${hhmmss(e.ts)}</td>` +
+           `<td>${esc(e.message)}</td><td class="path">${esc(e.path || "")}</td><td>${proc}</td><td><span class="tag ${cls}">${r}</span></td></tr>`;
   });
+  $("log-body").innerHTML = rows.join("") || `<tr><td colspan="5" class="empty">No events yet.</td></tr>`;
+  $("log-count").textContent = `(${events.length} events)`;
 }
-function renderProcs(){
-  var el=document.getElementById('proc-list'); el.innerHTML='';
-  processes.forEach(function(p){
-    var pct=Math.min(100,(p.io/80)*100);
-    var color=p.io>50?'#ef4444':p.io>20?'#f59e0b':'#DEFF9A';
-    var row=document.createElement('div'); row.className='proc-row';
-    row.innerHTML='<span class="proc-name">'+p.name+'</span><span class="proc-pid">PID '+p.pid+'</span><div class="proc-bar-wrap"><div class="proc-bar" style="width:'+pct+'%;background:'+color+';"></div></div><span style="font-size:12px;color:'+color+';min-width:60px;text-align:right;">'+p.io.toFixed(1)+' f/s</span><button class="kill-btn'+(p.trusted?'':' active')+'" onclick="this.textContent=\'Killed ✓\';this.disabled=true;this.style.opacity=\'0.5\';">Kill</button>';
-    el.appendChild(row);
-  });
-}
-function renderLog(){
-  var el=document.getElementById('log-body'); el.innerHTML='';
-  var shown=logEvents.slice(-8).reverse();
-  shown.forEach(function(e){
-    var tag=e.r==='high'?'tag-high':e.r==='med'?'tag-med':'tag-low';
-    el.innerHTML+='<tr><td style="color:#7d8590;white-space:nowrap;">'+e.t+'</td><td>'+e.e+'</td><td style="font-family:var(--font-mono,monospace);font-size:11px;color:#7d8590;">'+e.p+'</td><td>'+e.proc+'</td><td><span class="tag '+tag+'">'+e.r+'</span></td></tr>';
-  });
-  document.getElementById('log-count').textContent='('+logEvents.length+' events)';
-}
-function triggerAttack(){
-  if(attackMode) return;
-  attackMode=true;
-  var btn=document.querySelector('.ctrl-btn.primary');
-  btn.textContent='Attack in progress...'; btn.style.pointerEvents='none'; btn.style.opacity='.6';
-  document.getElementById('kill-all-btn').style.display='flex';
-  var step=0;
-  var atk=setInterval(function(){
-    step++;
-    var io=step<5?+(step*14+2).toFixed(1):+(70+Math.random()*5).toFixed(1);
-    var ent=step<3?+(step*1.5+2).toFixed(1):+(7.2+Math.random()*.5).toFixed(1);
-    ioData.push(io); ioData.shift();
-    entData.push(ent); entData.shift();
-    ioChart.data.datasets[0].data=[...ioData]; ioChart.update();
-    entChart.data.datasets[0].data=[...entData]; entChart.update();
-    document.getElementById('io-val').textContent=io;
-    document.getElementById('ent-val').textContent=ent;
-    document.getElementById('io-val').className='metric-val '+(io>50?'danger':io>20?'warn':'ok');
-    document.getElementById('ent-val').className='metric-val '+(ent>7?'danger':ent>5?'warn':'ok');
-    document.getElementById('io-badge').textContent=io>50?'CRITICAL':io>20?'Elevated':'Normal';
-    document.getElementById('io-badge').className='badge '+(io>50?'badge-danger':io>20?'badge-warn':'badge-ok');
-    document.getElementById('ent-badge').textContent=ent>7?'CRITICAL':ent>5?'Elevated':'Low';
-    document.getElementById('ent-badge').className='badge '+(ent>7?'badge-danger':ent>5?'badge-warn':'badge-ok');
-    if(step===3){
-      canaryState[4]=false; canaryState[9]=false; renderCanary();
-      var t=new Date(); var ts=t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0')+':'+t.getSeconds().toString().padStart(2,'0');
-      logEvents.push({t:ts,e:'⚠ Canary triggered',p:'/canary/bait_005.bin',proc:'encrypt.exe',r:'high'});
-      logEvents.push({t:ts,e:'Mass rename detected',p:'/home/docs/*.locked',proc:'encrypt.exe',r:'high'});
-      processes.push({name:'encrypt.exe',pid:4821,io:73.4,ent:7.9,trusted:false,bar:'#ef4444'});
-      renderProcs(); renderLog();
-    }
-    if(step===5){
-      document.getElementById('alert-box').className='alert-box visible';
-      document.getElementById('cpu-val').textContent='0.9%';
-      document.getElementById('sys-status').textContent='THREAT DETECTED';
-      document.getElementById('status-dot');
-    }
-    if(step>=8){clearInterval(atk);}
-  },700);
-}
-function killAll(){
-  attackMode=false;
-  threatsBlocked++;
-  document.getElementById('threats-val').textContent=threatsBlocked;
-  document.getElementById('threats-val').className='metric-val danger';
-  processes=processes.filter(function(p){return p.trusted;});
-  var t=new Date(); var ts=t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0')+':'+t.getSeconds().toString().padStart(2,'0');
-  logEvents.push({t:ts,e:'✓ Process terminated',p:'PID 4821 killed — SIGKILL via psutil',proc:'sentinel.py',r:'med'});
-  canaryState=Array(12).fill(true); renderCanary();
-  renderProcs(); renderLog(); renderEntBars();
-  document.getElementById('alert-box').className='alert-box';
-  document.getElementById('sys-status').textContent='System protected';
-  document.getElementById('kill-all-btn').style.display='none';
-  var btn=document.querySelector('.ctrl-btn.primary');
-  btn.innerHTML='<i class="ti ti-bug"></i>Simulate attack'; btn.style.pointerEvents=''; btn.style.opacity='1';
-  setTimeout(function(){
-    var io=+(Math.random()*3+0.5).toFixed(1); var ent=+(Math.random()*1.5+1.5).toFixed(1);
-    ioData=[...Array(20)].map(()=>+(Math.random()*3+0.5).toFixed(1));
-    entData=[...Array(20)].map(()=>+(Math.random()*1.5+1.5).toFixed(1));
-    ioChart.data.datasets[0].data=[...ioData]; ioChart.update();
-    entChart.data.datasets[0].data=[...entData]; entChart.update();
-    document.getElementById('io-val').textContent=io; document.getElementById('ent-val').textContent=ent;
-    document.getElementById('io-val').className='metric-val ok'; document.getElementById('ent-val').className='metric-val ok';
-    document.getElementById('io-badge').textContent='Normal'; document.getElementById('io-badge').className='badge badge-ok';
-    document.getElementById('ent-badge').textContent='Low'; document.getElementById('ent-badge').className='badge badge-ok';
-  },1000);
-}
-function tick(){
-  var now=Date.now(); var s=Math.floor((now-startTime)/1000);
-  var h=Math.floor(s/3600).toString().padStart(2,'0');
-  var m=Math.floor((s%3600)/60).toString().padStart(2,'0');
-  var sec=(s%60).toString().padStart(2,'0');
-  document.getElementById('runtime').textContent=h+':'+m+':'+sec;
-  var t=new Date(); document.getElementById('last-scan').textContent='Last scan: '+t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0')+':'+t.getSeconds().toString().padStart(2,'0');
-  if(!attackMode){
-    var io=+(Math.random()*3+0.5).toFixed(1); var ent=+(Math.random()*1.5+1.5).toFixed(1);
-    ioData.push(io); ioData.shift(); entData.push(ent); entData.shift();
-    ioChart.data.datasets[0].data=[...ioData]; ioChart.update();
-    entChart.data.datasets[0].data=[...entData]; entChart.update();
-    document.getElementById('io-val').textContent=io; document.getElementById('ent-val').textContent=ent;
+
+function renderVerdict(now) {
+  const b = $("verdict-banner");
+  if (!lastVerdict || now - lastVerdict.ts > 30) { b.className = "banner"; return; }
+  const d = lastVerdict.details || {};
+  const mit = lastMitigation && lastMitigation.ts >= lastVerdict.ts - 1 ? lastMitigation : null;
+  const signals = (d.signals || []).join(" + ");
+  if (mit && /^(terminated|killed)/.test(mit.message)) {
+    b.className = "banner banner-ok visible";
+    $("verdict-title").textContent = "✓ Ransomware stopped";
+    $("verdict-text").innerHTML = `Signals <b>${esc(signals)}</b> converged. <code>${esc(mit.process)}</code> (PID ${mit.pid}) ` +
+      `${esc(mit.message.split(":")[0])} at ${hhmmss(mit.ts)}.`;
+  } else {
+    b.className = "banner banner-alert visible";
+    $("verdict-title").textContent = "⚠ Ransomware behavior detected";
+    const why = d.no_action_reason ? `No kill: ${esc(d.no_action_reason)}.` :
+                mit ? esc(mit.message) : "Responding…";
+    $("verdict-text").innerHTML = `Signals <b>${esc(signals)}</b> converged at ${hhmmss(lastVerdict.ts)}. ${why}`;
   }
 }
-renderCanary(); renderEntBars(); renderProcs(); renderLog();
-setInterval(tick,2000);
+
+function renderAttribution() {
+  if (!lastVerdict) return;
+  const d = lastVerdict.details || {};
+  const list = d.suspects || [];
+  $("attr-meta").textContent = `verdict ${hhmmss(lastVerdict.ts)} · ${((d.observed_bytes || 0) / 1024).toFixed(0)} KiB observed`;
+  $("suspects").innerHTML = list.length ? list.map((s, i) =>
+    `<div class="suspect"><span class="badge ${i === 0 && !d.no_action_reason ? "badge-danger" : "badge-off"}">${i === 0 ? "culprit" : "#" + (i + 1)}</span>` +
+    `<span class="suspect-name mono">${esc(s)}</span></div>`).join("")
+    : `<div class="empty">No process accounted for the observed writes${d.no_action_reason ? " — " + esc(d.no_action_reason) : ""}.</div>`;
+}
+
+function renderAttack(s, now) {
+  attack = s.attack;
+  $("sandbox-path").textContent = s.sandbox || "—";
+  const total = (s.plaintext || 0) + (s.encrypted || 0);
+  $("bar-plain").style.width = total ? (100 * s.plaintext / total) + "%" : "100%";
+  $("bar-enc").style.width = total ? (100 * s.encrypted / total) + "%" : "0";
+  $("bar-label").textContent = `${s.plaintext} plaintext · ${s.encrypted} encrypted`;
+  const running = !!(attack && attack.running);
+  $("attack-btn").disabled = !online || running;
+  $("reset-btn").disabled = !online || running;
+  if (!attack) { setBadge($("attack-badge"), "off", "Idle"); return; }
+  $("a-proc").textContent = `PID ${attack.pid}` + (running ? " · running" : ` · exit ${attack.returncode}`);
+  $("a-profile").textContent = attack.profile || "—";
+  $("a-encrypted").textContent = `${attack.encrypted_by_attack} file(s)`;
+  const mit = lastMitigation && lastMitigation.ts >= attack.started - 0.5 && /^(terminated|killed)/.test(lastMitigation.message) ? lastMitigation : null;
+  if (running) {
+    setBadge($("attack-badge"), "danger", "Encrypting…");
+    $("a-ttk").textContent = (now - attack.started).toFixed(1) + " s (running)";
+    $("a-outcome").textContent = "—";
+  } else if (mit) {
+    setBadge($("attack-badge"), "ok", "Killed by Sentinel");
+    $("a-ttk").textContent = (mit.ts - attack.started).toFixed(2) + " s";
+    $("a-outcome").innerHTML = `<span class="ok">Stopped — ${attack.encrypted_by_attack} of ${total} documents lost</span>`;
+  } else {
+    setBadge($("attack-badge"), attack.returncode === 0 ? "danger" : "warn", attack.returncode === 0 ? "Completed" : "Exited");
+    $("a-ttk").textContent = "—";
+    $("a-outcome").innerHTML = attack.returncode === 0
+      ? `<span class="danger">Attack finished undetected (monitor-only mode or no attribution)</span>` : `exit code ${attack.returncode}`;
+  }
+}
+
+function renderStatus(s, now) {
+  const st = $("status"), txt = $("status-text");
+  const agent = s.agent;
+  const danger = lastVerdict && now - lastVerdict.ts < 10;
+  const running = s.attack && s.attack.running;
+  if (!agent || !agent.alive) { st.className = "status st-off"; txt.textContent = agent ? "Agent offline" : "No agent data"; }
+  else if (danger) { st.className = "status st-danger"; txt.textContent = "THREAT DETECTED"; }
+  else if (running) { st.className = "status st-warn"; txt.textContent = "Attack in progress"; }
+  else { st.className = "status st-ok"; txt.textContent = "System protected"; }
+  if (agent) {
+    $("mode").innerHTML = agent.mitigation ? `<span class="ok">Active — terminates</span>` : `<span class="warn">Monitor-only</span>`;
+    const up = Math.max(0, Math.floor(now - agent.started));
+    $("uptime").textContent = [up / 3600, up % 3600 / 60, up % 60].map(v => String(Math.floor(v)).padStart(2, "0")).join(":");
+    $("watching").textContent = (agent.watch_paths || []).join("\n") || "—";
+  }
+  $("m-blocked").textContent = s.threats_blocked;
+  $("m-blocked").className = "metric-val " + (s.threats_blocked ? "danger" : "");
+}
+
+async function poll() {
+  try {
+    const q = `since=${lastId}` + (lastMetricTs ? `&since_ts=${lastMetricTs}` : "");
+    const r = await fetch("/api/state?" + q, {cache: "no-store"});
+    if (!r.ok) throw new Error(r.status);
+    const s = await r.json();
+    online = true; $("offline-banner").className = "banner banner-off";
+    const fresh = new Set();
+    for (const e of s.events) {
+      events.push(e); lastId = Math.max(lastId, e.id); fresh.add(e.id);
+      if (e.category === "verdict" && e.level === "ALERT") lastVerdict = e;
+      if (e.category === "mitigation") lastMitigation = e;
+    }
+    if (events.length > 500) events = events.slice(-500);
+    for (const m of s.metrics) { pushMetric(m); lastMetricTs = m.ts; }
+    const now = s.server_time;
+    if (s.metrics.length) { redrawCharts(); renderMetrics(s.metrics[s.metrics.length - 1]); }
+    if (fresh.size || !$("log-body").children.length) renderLog(fresh);
+    renderVerdict(now); renderAttribution(); renderAttack(s, now); renderStatus(s, now);
+    $("last-update").textContent = "Last update: " + hhmmss(now) + (lastMetricTs ? ` · telemetry ${(now - lastMetricTs).toFixed(1)} s old` : "");
+  } catch (err) {
+    online = false;
+    $("offline-banner").className = "banner banner-off visible";
+    $("status").className = "status st-off"; $("status-text").textContent = "Disconnected";
+    $("attack-btn").disabled = $("reset-btn").disabled = true;
+  } finally {
+    setTimeout(poll, POLL_MS);
+  }
+}
+
+async function post(path, body) {
+  const r = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json", "X-Sentinel-Demo": "1"},
+                               body: JSON.stringify(body || {})});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.ok === false) alert(j.error || `Request failed (${r.status})`);
+}
+$("attack-btn").onclick = async () => {
+  $("attack-btn").disabled = true;
+  await post("/api/attack", {rate: Number($("rate").value), stealth: $("profile").value === "stealth"});
+};
+$("reset-btn").onclick = async () => {
+  $("reset-btn").disabled = true; $("reset-btn").textContent = "Resetting…";
+  await post("/api/reset");
+  $("reset-btn").textContent = "Reset sandbox";
+};
+
+if (location.protocol === "file:") {
+  $("offline-banner").className = "banner banner-off visible";
+  $("status-text").textContent = "Opened as a file";
+} else {
+  poll();
+}
 </script>
 </body>
 </html>

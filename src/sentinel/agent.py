@@ -15,6 +15,8 @@ from collections import deque
 from pathlib import Path
 from typing import Callable
 
+import psutil
+
 from .attribution import IoTracker, Suspect, ambiguous
 from .audit import AuditLog
 from .canary import CanaryManager
@@ -30,12 +32,24 @@ log = logging.getLogger(__name__)
 CANARY_VERIFY_INTERVAL = 5.0   # seconds between integrity sweeps of the bait files
 ENTROPY_RESAMPLE_GAP = 0.25    # don't re-read the same file more often than this
 CANARY_REARM_QUIET = 1.0       # ignore vault events right after we rewrite it ourselves
-ATTRIBUTION_SETTLE = 0.3       # boosted sampling needed before choosing whom to kill
+ATTRIBUTION_SETTLE = 0.3       # boosted sampling before the first attribution window closes
+CONFIRM_WINDOW = 0.6           # second, independent window the culprit must match again
+METRICS_INTERVAL = 0.25        # seconds between telemetry rows for the dashboard
 
 
 class Agent:
-    def __init__(self, cfg: Config, audit: AuditLog | None = None) -> None:
+    def __init__(
+        self,
+        cfg: Config,
+        audit: AuditLog | None = None,
+        kill_filter: Callable[[int], bool] | None = None,
+    ) -> None:
+        """``kill_filter``: optional extra gate on termination. When given, a
+        correctly attributed culprit is only killed if ``kill_filter(pid)`` is
+        true; otherwise the verdict stays alert-only. ``sentinel demo`` uses it
+        to restrict kills to the simulator the dashboard launched."""
         self.cfg = cfg
+        self.kill_filter = kill_filter
         d = cfg.detection
         self.audit = audit or AuditLog(cfg.audit_db)
         db = Path(self.audit.db_path).resolve()
@@ -57,6 +71,10 @@ class Agent:
         self._observed: deque[tuple[float, Path, int]] = deque()  # (ts, path, size) of changed files
         self._canary_quiet_until = 0.0
         self._handled_until = 0.0  # events stamped before the last response belong to that burst
+        self._tick_events = 0              # telemetry accumulators, reset every METRICS_INTERVAL
+        self._tick_entropy: float | None = None
+        self._self_proc = psutil.Process()
+        self._cpus = psutil.cpu_count() or 1
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -95,8 +113,10 @@ class Agent:
     # -- analysis loop -------------------------------------------------------
     def _loop(self) -> None:
         next_verify = time.monotonic() + CANARY_VERIFY_INTERVAL
+        next_metrics = time.monotonic()
+        self._self_proc.cpu_percent(None)  # prime: first call always returns 0
         while not self._stop.is_set():
-            event = self.listener.get(timeout=0.5)
+            event = self.listener.get(timeout=0.1)
             if event is not None:
                 try:
                     self.handle(event)
@@ -107,9 +127,29 @@ class Agent:
                 next_verify = now + CANARY_VERIFY_INTERVAL
                 for path in self.canary.verify():
                     self._fire(Signal(SignalKind.CANARY, 1.0, now, path, {"source": "integrity-sweep"}))
+            if now >= next_metrics:
+                next_metrics = now + METRICS_INTERVAL
+                try:
+                    self._write_metrics(now)
+                except Exception:
+                    log.exception("failed to write metrics")
+
+    def _write_metrics(self, now: float) -> None:
+        tampered = set(self.canary.verify()) if self.canary.files else set()
+        self.audit.write_metrics(
+            velocity=self.velocity.rate(now),
+            entropy=self._tick_entropy,
+            events=self._tick_events,
+            cpu=self._self_proc.cpu_percent(None) / self._cpus,
+            canary_state="".join("0" if f in tampered else "1" for f in self.canary.files),
+            active_signals=[k.value for k in self.engine.active(now)],
+        )
+        self._tick_events = 0
+        self._tick_entropy = None
 
     def handle(self, event: FileEvent) -> None:
         ts = event.timestamp
+        self._tick_events += 1
         if ts < self._handled_until:
             return  # backlog of a burst we already responded to
         touched = [p for p in (event.path, event.dest_path) if p is not None]
@@ -136,6 +176,8 @@ class Agent:
         if len(self._last_sampled) > 10_000:
             self._last_sampled.clear()
         h = self.entropy.observe(target, ts)
+        if h is not None:
+            self._tick_entropy = h if self._tick_entropy is None else max(self._tick_entropy, h)
         if h is not None and self.entropy.triggered(ts):
             self._fire(Signal(SignalKind.ENTROPY, h, ts, target,
                               {"high_entropy_files": self.entropy.hit_count(ts)}))
@@ -164,18 +206,35 @@ class Agent:
     # -- response ------------------------------------------------------------
     def respond(self, verdict: Verdict) -> None:
         log.critical("VERDICT: ransomware behavior detected (%s)", verdict.reason)
-        self._settle()
-        burst_start, observed = self._observed_burst()
-        suspects = self.io.suspects(since=burst_start, expected_bytes=observed)
+        # Window 1: from burst start. Writes only — a freshly started culprit's
+        # reads are inflated by its own startup (interpreter, DLLs, config).
+        boosted = self.io.boosted_since
+        if boosted is None:
+            self.io.boost()
+            boosted = time.monotonic()
+        self._settle(boosted + ATTRIBUTION_SETTLE)
+        burst_start, observed1 = self._observed_burst()
+        t1 = time.monotonic()
+        first = self.io.suspects(since=burst_start, expected_bytes=observed1, check_reads=False)
+        # Window 2: steady state. Writes and reads must both match again.
+        self._settle(t1 + CONFIRM_WINDOW)
+        _, observed = self._observed_burst(after=t1)
+        suspects = self.io.suspects(since=t1, expected_bytes=observed) if first else []
         target: Suspect | None = suspects[0] if suspects else None
         outcome = None
-        if target is None:
-            outcome = f"no process accounts for the observed writes ({observed} B)"
+        if not first:
+            outcome = f"no process accounts for the observed writes ({observed1} B)"
+        elif target is None:
+            outcome = f"no process consistently accounts for the writes ({observed} B in confirm window)"
+        elif target.pid not in {s.pid for s in first}:
+            outcome = f"best match {target.name} was not a candidate in the first window"
         elif ambiguous(suspects):
             outcome = f"ambiguous attribution between {suspects[0].name} and {suspects[1].name}"
         elif target.name in self.whitelist:
             # The burst is explained by a trusted tool; the runner-up is not the culprit.
             outcome = f"best match {target.name} is whitelisted"
+        elif self.kill_filter is not None and not self.kill_filter(target.pid):
+            outcome = f"{target.name} (pid {target.pid}) is outside the kill scope"
         if outcome:
             log.error("%s; alert only", outcome)
 
@@ -184,6 +243,8 @@ class Agent:
                          process=target.name if target else None,
                          details={"signals": verdict.kinds,
                                   "observed_bytes": observed,
+                                  "observed_bytes_window1": observed1,
+                                  "window1_candidates": [str(s) for s in first],
                                   "suspects": [str(s) for s in suspects],
                                   "no_action_reason": outcome})
         result = None
@@ -208,28 +269,24 @@ class Agent:
         for cb in self.on_verdict:
             cb(verdict, target, result)
 
-    def _settle(self) -> None:
-        """Collect boosted write samples so the volume comparison is stable.
+    def _settle(self, deadline: float) -> None:
+        """Keep collecting file changes until ``deadline`` (boosted I/O sampling runs meanwhile).
 
-        Waits up to ATTRIBUTION_SETTLE after boosting began. Events that
-        arrive meanwhile are only recorded as changes (no detection): the
-        burst they belong to is the one being responded to.
+        Events that arrive meanwhile are only recorded as changes (no
+        detection): the burst they belong to is the one being responded to.
         """
-        boosted = self.io.boosted_since
-        if boosted is None:
-            self.io.boost()
-            boosted = time.monotonic()
-        deadline = boosted + ATTRIBUTION_SETTLE
         while (now := time.monotonic()) < deadline:
             event = self.listener.get(timeout=min(0.05, deadline - now))
             if event is not None and event.timestamp >= self._handled_until:
                 self._record_change(event)
 
-    def _observed_burst(self) -> tuple[float | None, int]:
-        """Burst start and total size of distinct files changed in the attribution window."""
+    def _observed_burst(self, after: float | None = None) -> tuple[float | None, int]:
+        """Start and total size of distinct files changed in the attribution window
+        (or only after monotonic time ``after``)."""
         cutoff = time.monotonic() - self.io.window
         while self._observed and self._observed[0][0] < cutoff:
             self._observed.popleft()
-        if not self._observed:
+        changes = [(ts, path, size) for ts, path, size in self._observed if after is None or ts > after]
+        if not changes:
             return None, 0
-        return self._observed[0][0], sum({path: size for _, path, size in self._observed}.values())
+        return changes[0][0], sum({path: size for _, path, size in changes}.values())
