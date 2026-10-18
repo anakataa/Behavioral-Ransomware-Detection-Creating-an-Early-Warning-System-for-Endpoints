@@ -2,19 +2,28 @@
 
 watchdog reports *what* changed, not *who*. Without a kernel driver
 (minifilter / fanotify / ETW) we infer the culprit from per-process
-write counters (``psutil.Process.io_counters().write_bytes``):
+I/O counters (``psutil.Process.io_counters()``):
 
 1. A background sampler records every process's cumulative write
    counter once per ``interval``. When the agent sees a first signal it
    calls ``boost()``: sampling switches to ``BOOST_INTERVAL`` for a few
    seconds, so "writes since the burst began" has a tight baseline.
-2. Volume consistency: the culprit wrote at least the bytes seen
-   changing in watched dirs, and not wildly more. Candidates outside
-   MIN_RATIO..MAX_RATIO are dropped; the rest rank by closeness to 1.
-   (A browser streaming 50 MB to its cache is a heavy writer, not a
-   plausible author of 2 MB of encrypted documents.)
-3. An open handle inside a watched directory outranks everything.
-4. Two equally plausible candidates -> ambiguous.
+2. Write consistency: the culprit wrote at least the bytes seen
+   changing in watched dirs, and not wildly more (MIN_RATIO..MAX_RATIO).
+   A browser streaming 50 MB to its cache is a heavy writer, not a
+   plausible author of 2 MB of encrypted documents.
+3. Read consistency: crypto-ransomware must *read* every document it
+   encrypts, so the culprit also read a comparable volume
+   (MIN_READ_RATIO..MAX_READ_RATIO). Background writers that happen to
+   match the write volume (measured: a Steam helper at ~170 KiB/s vs. a
+   20 files/s attack) rarely match the read volume as well.
+4. Survivors rank by combined closeness of both ratios to 1; an open
+   handle inside a watched directory outranks everything.
+5. Two equally plausible candidates -> ambiguous.
+
+Known gap: intermittent ("partial") encryption touches only a few KiB
+per file, so both ratios fall far below 1 and attribution fails safe
+(alert only).
 
 No candidate, or ambiguity -> the agent alerts but doesn't kill.
 
@@ -59,6 +68,10 @@ MAX_RATIO = 4.0
 # Two candidates whose ratios are within this factor of each other are
 # equally plausible: attribution is ambiguous and nothing gets killed.
 AMBIGUITY_FACTOR = 1.5
+# Reads may be smaller than the documents (memory-mapped / cached reads,
+# headers kept) and larger (scanning before choosing targets).
+MIN_READ_RATIO = 0.5
+MAX_READ_RATIO = 8.0
 BOOST_INTERVAL = 0.1     # seconds between samples while a burst is suspected
 BOOST_DURATION = 5.0
 
@@ -70,22 +83,33 @@ class Suspect:
     exe: str | None
     bytes_written: int
     touches_watched: bool
-    ratio: float | None = None   # bytes_written / bytes observed changing in watched dirs
+    ratio: float | None = None       # bytes_written / bytes observed changing in watched dirs
+    bytes_read: int = 0
+    read_ratio: float | None = None  # bytes_read / bytes observed
+
+    @property
+    def distance(self) -> float:
+        """How far both ratios are from a perfect 1:1 match (log scale)."""
+        if self.ratio is None:
+            return 0.0
+        return abs(math.log(self.ratio)) + abs(math.log(self.read_ratio or 1.0))
 
     def __str__(self) -> str:
         flag = " [open handle in watched dir]" if self.touches_watched else ""
-        ratio = f", x{self.ratio:.2f} of observed" if self.ratio is not None else ""
-        return f"{self.name} (pid {self.pid}, {self.bytes_written / 1024:.0f} KiB written{ratio}){flag}"
+        ratio = ""
+        if self.ratio is not None:
+            ratio = f", w x{self.ratio:.2f} / r x{(self.read_ratio or 0):.2f} of observed"
+        return (f"{self.name} (pid {self.pid}, {self.bytes_written / 1024:.0f} KiB written, "
+                f"{self.bytes_read / 1024:.0f} KiB read{ratio}){flag}")
 
 
 def ambiguous(suspects: Sequence[Suspect]) -> bool:
     """True if the two best volume-matched suspects are equally plausible."""
     if len(suspects) < 2 or suspects[0].touches_watched != suspects[1].touches_watched:
         return False
-    a, b = suspects[0].ratio, suspects[1].ratio
-    if a is None or b is None:
+    if suspects[0].ratio is None or suspects[1].ratio is None:
         return False
-    return abs(math.log(b)) - abs(math.log(a)) < math.log(AMBIGUITY_FACTOR)
+    return suspects[1].distance - suspects[0].distance < math.log(AMBIGUITY_FACTOR)
 
 
 if sys.platform == "win32":
@@ -128,7 +152,7 @@ class IoTracker:
         self.watch_paths = [Path(p).resolve() for p in watch_paths]
         self.interval = interval
         self.window = window
-        self._history: dict[int, deque[tuple[float, int]]] = {}
+        self._history: dict[int, deque[tuple[float, int, int]]] = {}  # (ts, written, read)
         self._names: dict[int, str] = {}
         self._swept = False
         self._denied: set[int] = set()
@@ -158,9 +182,10 @@ class IoTracker:
                 continue
             try:
                 io = proc.io_counters()
-                # Linux write_bytes only counts storage writeback (delayed by the
-                # page cache); write_chars counts write() syscalls as they happen.
+                # Linux *_bytes only count real storage I/O (page cache delays
+                # writes and hides cached reads); *_chars count syscalls as they happen.
                 written = getattr(io, "write_chars", None) or io.write_bytes
+                read = getattr(io, "read_chars", None) or io.read_bytes
             except psutil.AccessDenied:
                 # Other users' / system processes: won't change, and the
                 # exception path is expensive on Windows — remember it.
@@ -174,9 +199,9 @@ class IoTracker:
                 if hist is None:
                     hist = self._history[pid] = deque()
                     if self._swept:
-                        # Born after the previous sweep: it had written 0 bytes at birth.
-                        hist.append((self._birth(proc, now), 0))
-                hist.append((now, written))
+                        # Born after the previous sweep: it had done no I/O at birth.
+                        hist.append((self._birth(proc, now), 0, 0))
+                hist.append((now, written, read))
                 while len(hist) > 1 and now - hist[0][0] > self.window:
                     hist.popleft()
                 self._names[pid] = proc.info["name"] or "?"
@@ -240,54 +265,63 @@ class IoTracker:
         return False
 
     @staticmethod
-    def _delta_since(hist: Sequence[tuple[float, int]], since: float | None) -> int:
-        """Bytes written after the last sample at or before ``since``."""
-        base = hist[0][1]
+    def _delta_since(hist: Sequence[tuple[float, int, int]], since: float | None) -> tuple[int, int]:
+        """(written, read) bytes after the last sample at or before ``since``."""
+        base = hist[0]
         if since is not None:
-            for ts, written in hist:
-                if ts > since:
+            for sample in hist:
+                if sample[0] > since:
                     break
-                base = written
-        return hist[-1][1] - base
+                base = sample
+        return hist[-1][1] - base[1], hist[-1][2] - base[2]
 
     def suspects(
         self,
         top: int = 5,
         since: float | None = None,
         expected_bytes: int = 0,
+        check_reads: bool = True,
     ) -> list[Suspect]:
         """Rank processes by how well they explain the observed burst.
 
         ``since``: monotonic start of the burst.
         ``expected_bytes``: bytes seen changing in watched dirs. When
-        given, only processes whose writes since the burst started are
-        MIN_RATIO..MAX_RATIO of it remain, closest first. Without it,
+        given, only processes whose writes *and* reads since the burst
+        started are consistent with it remain, closest first. Without it,
         processes are simply ranked by write volume (diagnostics, tests).
         """
         self.sample()
         with self._lock:
             history = {pid: list(h) for pid, h in self._history.items() if len(h) >= 2}
             names = dict(self._names)
-        deltas = [(pid, self._delta_since(h, since)) for pid, h in history.items()]
-        deltas = [(pid, d) for pid, d in deltas if d > 0 and not is_protected(pid, names.get(pid))]
-
+        deltas = [(pid, *self._delta_since(h, since)) for pid, h in history.items()]
+        deltas = [(pid, w, r) for pid, w, r in deltas if w > 0 and not is_protected(pid, names.get(pid))]
         deltas.sort(key=lambda x: x[1], reverse=True)
-        if expected_bytes > 0:
-            for pid, d in deltas[:5]:
-                log.debug("writer %s[%d]: %d B (x%.2f of observed %d B)",
-                          names.get(pid), pid, d, d / expected_bytes, expected_bytes)
-            lo, hi = MIN_RATIO * expected_bytes, MAX_RATIO * expected_bytes
-            deltas = [(pid, d) for pid, d in deltas if lo <= d <= hi]
-            deltas.sort(key=lambda x: abs(math.log(x[1] / expected_bytes)))
 
-        result = []
-        for pid, delta in deltas[:top]:
+        candidates = []
+        for pid, w, r in deltas:
+            ratio = w / expected_bytes if expected_bytes > 0 else None
+            read_ratio = r / expected_bytes if expected_bytes > 0 else None
+            if expected_bytes > 0:
+                log.debug("writer %s[%d]: w x%.2f r x%.2f of observed %d B",
+                          names.get(pid), pid, ratio, read_ratio, expected_bytes)
+                if not MIN_RATIO <= ratio <= MAX_RATIO:
+                    continue
+                if check_reads and not MIN_READ_RATIO <= read_ratio <= MAX_READ_RATIO:
+                    continue
+                if not check_reads:
+                    read_ratio = None  # not part of this window's evidence
+            candidates.append(Suspect(pid, names.get(pid, "?"), None, w, False, ratio, r, read_ratio))
+        if expected_bytes > 0:
+            candidates.sort(key=lambda s: s.distance)
+
+        result = candidates[:top]
+        for s in result:
             try:
-                exe = psutil.Process(pid).exe()
+                s.exe = psutil.Process(s.pid).exe()
             except (psutil.Error, OSError):
-                exe = None
-            ratio = delta / expected_bytes if expected_bytes > 0 else None
-            result.append(Suspect(pid, names.get(pid, "?"), exe, delta, self._touches_watched(pid), ratio))
+                pass
+            s.touches_watched = self._touches_watched(s.pid)
         # stable sort: an open handle in a watched dir outranks everything else
         result.sort(key=lambda s: s.touches_watched, reverse=True)
         return result

@@ -28,7 +28,20 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
 CREATE INDEX IF NOT EXISTS idx_audit_category ON audit_log(category);
+
+-- Live telemetry for the dashboard (a few Hz, pruned to METRICS_RETENTION).
+CREATE TABLE IF NOT EXISTS metrics (
+    ts             REAL PRIMARY KEY,
+    velocity       REAL NOT NULL,   -- events / s (sliding window)
+    entropy        REAL,            -- max bits/byte sampled since previous row
+    events         INTEGER NOT NULL,-- FS events since previous row
+    cpu            REAL,            -- agent process CPU %
+    canary_state   TEXT,            -- one char per bait file: 1 intact, 0 tampered
+    active_signals TEXT             -- comma-separated hot signal kinds
+);
 """
+
+METRICS_RETENTION = 600.0  # seconds
 
 
 @dataclass
@@ -79,6 +92,25 @@ class AuditLog:
             )
             self._conn.commit()
             return int(cur.lastrowid)
+
+    def write_metrics(
+        self,
+        velocity: float,
+        entropy: float | None,
+        events: int,
+        cpu: float | None,
+        canary_state: str,
+        active_signals: list[str],
+        ts: float | None = None,
+    ) -> None:
+        now = time.time() if ts is None else ts
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO metrics VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (now, velocity, entropy, events, cpu, canary_state, ",".join(active_signals)),
+            )
+            self._conn.execute("DELETE FROM metrics WHERE ts < ?", (now - METRICS_RETENTION,))
+            self._conn.commit()
 
     def recent(self, limit: int = 50, category: str | None = None) -> list[AuditRecord]:
         sql = "SELECT id, ts, level, category, message, path, pid, process, details FROM audit_log"
