@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Status](<https://img.shields.io/badge/Status-Phase_2_(In_Progress)-yellow>)]()
+[![Status](<https://img.shields.io/badge/Status-Phase_3_(In_Progress)-yellow>)]()
 [![Platform](https://img.shields.io/badge/Platform-Windows_|_Linux_|_macOS-lightgrey)]()
 
 _A lightweight, signature-less endpoint agent that detects ransomware by its **actions** — not its identity._
@@ -72,6 +72,21 @@ Features:
 
 ```
 sentinel/
+├── src/sentinel/
+│   ├── event_listener.py      # watchdog wrapper -> normalized FileEvent queue
+│   ├── velocity.py            # sliding-window I/O rate detector
+│   ├── entropy.py             # Shannon entropy detector (4 KiB mid-file sample)
+│   ├── canary.py              # hidden bait-file vaults + integrity sweep
+│   ├── decision.py            # k-of-n signal convergence + whitelist
+│   ├── attribution.py         # "who is writing?" — per-process write accounting
+│   ├── mitigation.py          # suspend -> terminate -> kill the process tree
+│   ├── audit.py               # SQLite audit trail
+│   ├── config.py              # YAML config loader with defaults
+│   ├── agent.py               # wires the pipeline together
+│   └── __main__.py            # CLI: run | canary | audit
+├── scripts/
+│   └── mock_ransomware.py     # SAFE behavioral simulator (sandbox-only)
+├── tests/                     # unit tests + end-to-end agent-vs-mock tests
 ├── assets/
 │   └── architecture.png       # System architecture diagram (Eraser.io)
 ├── dashboard/
@@ -79,9 +94,44 @@ sentinel/
 ├── docs/
 │   └── proposal.pdf           # Full coursework proposal (19 slides)
 ├── config.example.yaml        # Sample configuration with defaults
+├── pyproject.toml
 ├── LICENSE                     # Apache 2.0
 └── README.md
 ```
+
+## Quick Start
+
+```bash
+python -m venv .venv && .venv\Scripts\activate      # Linux/macOS: source .venv/bin/activate
+pip install -e ".[dev]"
+
+# 1. Build a disposable sandbox of synthetic documents
+python scripts/mock_ransomware.py setup --target sandbox --files 300
+
+# 2. Start the agent on it (second terminal)
+python -m sentinel run --watch sandbox              # add --monitor-only to never kill
+
+# 3. Launch the simulated attack
+python scripts/mock_ransomware.py encrypt --target sandbox
+
+# 4. Inspect what happened
+python -m sentinel audit
+```
+
+Typical result on a Windows 10 laptop: canary + entropy converge ~80 ms after
+the first bait file is hit, the simulator is terminated ~0.3 s later, with
+**~5–9 % of the files encrypted** (21/400, 26/300 in test runs).
+
+Run the test suite with `pytest` (end-to-end tests launch the simulator
+against a live agent).
+
+### How the agent decides whom to kill
+
+`watchdog` reports *what* changed, never *who*. Without a kernel driver the agent
+attributes the burst from user space (`attribution.py`): per-process write counters
+are sampled (10 Hz while a burst is suspected), and the culprit must have written
+0.9–4× the bytes observed changing in the watched folders. No match, two equally
+plausible matches, or a whitelisted best match → **alert only, no kill**.
 
 ## Tech Stack
 
@@ -110,6 +160,6 @@ sentinel/
 | Phase                              | Status         | Description                                                       |
 | ---------------------------------- | -------------- | ----------------------------------------------------------------- |
 | **1. Research & Analysis**         | ✅ Done        | Threat landscape, competitive matrix, mathematical foundations    |
-| **2. Architecture & Prototyping**  | 🔄 In Progress | System design, dashboard UI, core engine scaffolding              |
-| **3. Sandbox Testing**             | 📋 Planned     | VirtualBox isolation, crypto-simulation scripts, threshold tuning |
+| **2. Architecture & Prototyping**  | ✅ Done        | System design, dashboard UI, core engine (`src/sentinel/`)        |
+| **3. Sandbox Testing**             | 🔄 In Progress | VirtualBox isolation, crypto-simulation scripts, threshold tuning |
 | **4. Integration & Documentation** | 📋 Planned     | SQLite integration, resource profiling, final thesis document     |
