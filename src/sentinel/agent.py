@@ -209,7 +209,7 @@ class Agent:
             cb(verdict, target, result)
 
     def _settle(self) -> None:
-        """Collect enough boosted write samples for correlation to be meaningful.
+        """Collect boosted write samples so the volume comparison is stable.
 
         Waits up to ATTRIBUTION_SETTLE after boosting began. Events that
         arrive meanwhile are only recorded as changes (no detection): the
