@@ -1,0 +1,55 @@
+# Runs on GitHub-hosted virtual machines: a fresh Windows Server and a fresh
+# Ubuntu 22.04 VM for every job. Each job installs Sentinel from scratch.
+name: Tests and evaluation (Windows + Linux VMs)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Tests · ${{ matrix.os }} · Python ${{ matrix.python }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+        python: ["3.10", "3.12"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Test suite
+        run: python -m pytest -q
+
+  evaluation:
+    name: Evaluation matrix · ${{ matrix.os }}
+    needs: tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e .
+      - name: Attack simulator, false-positive workloads, idle overhead
+        run: python scripts/vm/run_matrix.py --runs 3 --rates 20,50,100,200,400,0 --out results/${{ matrix.os }}
+      - name: Publish summary
+        shell: bash
+        run: cat results/${{ matrix.os }}/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-${{ matrix.os }}
+          path: results/${{ matrix.os }}

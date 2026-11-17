@@ -1,0 +1,76 @@
+# Builds the downloads the website links to and attaches them to a GitHub Release.
+# Trigger: push a tag, e.g.  git tag v0.1.0 && git push origin v0.1.0
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  windows-exe:
+    name: Windows executable
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install . pyinstaller
+      - name: Build sentinel.exe
+        run: pyinstaller --noconfirm packaging/sentinel.spec
+      - name: Smoke test on a clean Windows VM (demo + attack + kill)
+        run: python scripts/vm/smoke_exe.py dist/sentinel.exe
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory pkg | Out-Null
+          Copy-Item dist/sentinel.exe, LICENSE, config.example.yaml pkg/
+          @"
+          Sentinel - behavioral ransomware early warning (research prototype)
+
+          Try it safely:         sentinel.exe demo
+          Watch-only on a folder: sentinel.exe run --watch "%USERPROFILE%\Documents" --monitor-only
+          Protect a folder:       sentinel.exe run --watch "%USERPROFILE%\Documents"
+          Show the audit log:     sentinel.exe audit -n 20
+
+          The demo only touches its own sandbox folder.
+          "@ | Out-File -Encoding utf8 pkg/README.txt
+          Compress-Archive -Path pkg/* -DestinationPath sentinel-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: sentinel-windows-x64.zip
+
+  python-dist:
+    name: Wheel and source package
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python
+          path: dist/*
+
+  publish:
+    name: GitHub Release
+    needs: [windows-exe, python-dist]
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

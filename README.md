@@ -150,6 +150,21 @@ No match, two equally plausible matches, or a whitelisted best match → **alert
 no kill**. Measured on a busy desktop (browser, Steam, IDE running): 0 wrong
 decisions in 68 verdicts across 12 attacks at 10–max files/s.
 
+## Download, Testing & Evaluation
+
+- **Website:** [`site/index.html`](site/index.html) — the download page, published by
+  `ci/github-workflows/pages.yml` to GitHub Pages.
+- **Windows executable:** `packaging/sentinel.spec` builds a portable `sentinel.exe`
+  (no Python needed; `sentinel.exe demo` works out of the box). The release workflow
+  builds it on a clean Windows VM, smoke-tests it (`scripts/vm/smoke_exe.py`) and
+  attaches `sentinel-windows-x64.zip` to the GitHub Release.
+- **Virtual-machine evaluation:** `scripts/vm/run_matrix.py` runs the attack simulator at
+  several speeds, legitimate workloads (false positives) and an idle check, and writes
+  `results.csv` + `summary.md`. Guide: [`docs/sandbox.md`](docs/sandbox.md).
+  Results so far: [`docs/results.md`](docs/results.md).
+- **CI:** `ci/github-workflows/ci.yml` runs the tests and the evaluation matrix on fresh
+  Windows and Ubuntu VMs (GitHub Actions) on every push.
+
 ## Tech Stack
 
 | Component           | Technology            | Purpose                                                      |
@@ -178,5 +193,5 @@ decisions in 68 verdicts across 12 attacks at 10–max files/s.
 | ---------------------------------- | -------------- | ----------------------------------------------------------------- |
 | **1. Research & Analysis**         | ✅ Done        | Threat landscape, competitive matrix, mathematical foundations    |
 | **2. Architecture & Prototyping**  | ✅ Done        | System design, dashboard UI, core engine (`src/sentinel/`)        |
-| **3. Sandbox Testing**             | 🔄 In Progress | VirtualBox isolation, crypto-simulation scripts, threshold tuning |
+| **3. Sandbox Testing**             | 🔄 Linux VM done, Windows VM next | VirtualBox isolation, crypto-simulation scripts, threshold tuning |
 | **4. Integration & Documentation** | 📋 Planned     | SQLite integration, resource profiling, final thesis document     |

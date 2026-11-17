@@ -183,7 +183,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_bundled_mock(args: list[str]) -> int:
+    """Frozen builds only: run the bundled mock-ransomware simulator in this exe."""
+    import runpy
+
+    from .dashboard import MOCK
+
+    sys.argv = [str(MOCK), *args]
+    runpy.run_path(str(MOCK), run_name="__main__")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    raw = sys.argv[1:] if argv is None else argv
+    if raw and raw[0] == "_mock":  # hidden: used by `demo` in the Windows .exe build
+        return _run_bundled_mock(raw[1:])
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:

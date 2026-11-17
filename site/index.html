@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel — ransomware early warning for Windows</title>
+<meta name="description" content="Sentinel is a free, open-source agent that detects ransomware by its behavior — file velocity, entropy and bait files — and stops it on your computer, fully offline.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230F1214' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M12 2.5 4 5.5v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10v-6l-8-3Z' fill='%23D4F25E'/%3E%3Cpath d='m8.5 12 2.5 2.5 4.5-5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F4F5F1; --white:#FFFFFF; --ink:#0F1214; --ink-2:#3D4349; --body:#474D53; --mute:#5A6067;
+  --line:#DDE0DA; --chip:#E7EAE2; --ok:#2F8F4E;
+  --night:#0F1214; --night-card:#171B1F; --night-line:#2A3036; --night-text:#E8EBEE; --night-mute:#9AA3AB; --night-body:#B4BCC3;
+  --lime:#D4F25E; --coral:#FF7A52;
+  --display:'Space Grotesk', system-ui, sans-serif; --sans:Inter, system-ui, sans-serif; --mono:'JetBrains Mono', ui-monospace, monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6}
+a{color:var(--ink)} a:hover{color:var(--ink-2)}
+.wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+h1,h2,h3{font-family:var(--display);margin:0;letter-spacing:-.02em}
+h2{font-size:clamp(30px,4vw,40px);line-height:1.1}
+h3{font-size:22px;letter-spacing:-.01em}
+p{margin:0}
+.lead{font-size:18px;color:var(--body)}
+code,.mono{font-family:var(--mono)}
+.btn{display:inline-flex;align-items:center;gap:12px;min-height:56px;padding:0 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:17px}
+.btn-dark{background:var(--ink);color:var(--paper)} .btn-dark:hover{background:#262B30;color:var(--paper)}
+.btn-line{border:1.5px solid var(--ink);color:var(--ink)} .btn-line:hover{background:var(--white)}
+.btn-sm{min-height:44px;padding:0 18px;font-size:15px}
+.skip{position:absolute;left:-9999px} .skip:focus{left:16px;top:16px;background:var(--white);padding:8px 12px;z-index:9}
+
+/* nav */
+header{border-bottom:1px solid var(--line)}
+nav{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;padding-top:18px;padding-bottom:18px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+.brand span{font-family:var(--display);font-weight:700;font-size:20px}
+.links{display:flex;flex-wrap:wrap;align-items:center;gap:24px;font-size:15px}
+.links a{text-decoration:none}
+
+/* hero */
+.hero{display:flex;flex-wrap:wrap;align-items:center;gap:56px;padding-top:88px;padding-bottom:96px}
+.hero-copy{flex:1 1 440px;min-width:0;display:flex;flex-direction:column;gap:24px}
+.chip{display:inline-flex;align-self:flex-start;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:var(--chip);font-size:13px;font-weight:500;color:var(--ink-2)}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+h1{font-weight:700;font-size:clamp(40px,5vw,64px);line-height:1.04;letter-spacing:-.03em}
+.hero-copy .lead{font-size:19px;max-width:34em}
+.cta{display:flex;flex-wrap:wrap;gap:12px;padding-top:8px}
+.meta{font-size:14px;color:var(--mute)}
+.shot{flex:1 1 520px;min-width:0}
+.window{background:var(--night);border-radius:14px;overflow:hidden;color:var(--night-text);box-shadow:0 30px 60px -30px rgba(15,18,20,.45)}
+.window-bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--night-line)}
+.window-bar i{width:10px;height:10px;border-radius:50%;background:#3A4148}
+.window-bar span{margin-left:8px;font-size:12px;color:var(--night-mute)}
+.window-body{padding:28px;display:flex;flex-direction:column;gap:22px}
+.status{display:flex;align-items:center;gap:16px}
+.status-icon{width:56px;height:56px;border-radius:14px;background:var(--lime);display:flex;align-items:center;justify-content:center;flex:none}
+.status strong{display:block;font-family:var(--display);font-size:24px}
+.status small{font-size:14px;color:var(--night-mute)}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.tile{background:var(--night-card);border:1px solid var(--night-line);border-radius:10px;padding:14px}
+.tile small{display:block;font-size:12px;color:var(--night-mute)}
+.tile b{font-family:var(--mono);font-size:22px;font-weight:500}
+.tile b span{font-size:13px;color:var(--night-mute)}
+
+/* sections */
+.band{background:var(--white);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.section{padding-top:96px;padding-bottom:96px;display:flex;flex-direction:column;gap:44px}
+.intro{display:flex;flex-direction:column;gap:12px;max-width:720px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+.card{border:1px solid var(--line);border-radius:14px;padding:28px;display:flex;flex-direction:column;gap:14px;background:var(--white)}
+.card p{color:var(--body)}
+.rule{font-family:var(--mono);font-size:14px;background:var(--paper);border-radius:8px;padding:10px 12px}
+.timeline{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));border-top:2px solid var(--ink)}
+.timeline li{padding:20px 20px 0 0;display:flex;flex-direction:column;gap:6px}
+.timeline .t{font-family:var(--mono);font-size:14px;color:var(--mute)}
+.timeline b{font-size:18px}
+.timeline span:last-child{color:var(--body)}
+.dark{background:var(--night);color:var(--night-text)}
+.dark .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:40px;padding-top:96px;padding-bottom:96px}
+.dark h3{color:var(--lime)}
+.dark p{color:var(--night-body)}
+.split{display:flex;flex-wrap:wrap;gap:48px;padding-top:96px;padding-bottom:96px}
+.split>div{flex:1 1 420px;min-width:0;display:flex;flex-direction:column;gap:20px}
+.steps{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:18px}
+.steps li{display:flex;gap:16px}
+.steps .n{flex:none;width:32px;height:32px;border-radius:50%;background:var(--ink);color:var(--paper);display:flex;align-items:center;justify-content:center;font-weight:600}
+.steps b{display:block}
+.steps p{color:var(--body)}
+.term{background:var(--night);color:var(--night-text);border-radius:12px;padding:18px 22px;font-family:var(--mono);font-size:14px;line-height:1.8;overflow-x:auto;white-space:pre}
+.term .p{color:var(--night-mute)}
+.note{font-size:14px;color:var(--mute)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:12px 8px 12px 0;border-bottom:1px solid var(--line);vertical-align:top}
+th[scope=row]{font-weight:600;width:38%}
+td{color:var(--body)}
+thead th{font-size:13px;color:var(--mute);font-weight:600}
+.scroll{overflow-x:auto}
+.faq{display:flex;flex-direction:column;gap:18px}
+.faq p{color:var(--body)}
+.yes{color:var(--ok);font-weight:600}
+.warn{color:#B4441E;font-weight:600}
+footer{border-top:1px solid var(--line)}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;padding-top:32px;padding-bottom:32px;font-size:14px;color:var(--mute)}
+@media (max-width:560px){
+  .hero{padding-top:48px;padding-bottom:56px}
+  .section,.split{padding-top:64px;padding-bottom:64px}
+  .tiles{grid-template-columns:1fr}
+  .links{gap:16px}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header>
+  <nav class="wrap" aria-label="Main">
+    <a class="brand" href="#top">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0F1214" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 4 5.5v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10v-6l-8-3Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
+      <span>Sentinel</span>
+    </a>
+    <div class="links">
+      <a href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="#tested">Test results</a>
+      <a href="https://github.com/anakataa/Behavioral-Ransomware-Detection-Creating-an-Early-Warning-System-for-Endpoints">GitHub</a>
+      <a class="btn btn-dark btn-sm" href="#download">Download</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+<section id="top" class="wrap hero">
+  <div class="hero-copy">
+    <div class="chip"><i></i>Open source · works offline · free</div>
+    <h1>Stops ransomware by what it does, not by what it's called.</h1>
+    <p class="lead">Sentinel watches your files in real time. When a program starts rewriting documents at machine speed, filling them with encrypted noise and touching hidden bait files, Sentinel stops it — before most of your data is gone.</p>
+    <div id="download" class="cta">
+      <a class="btn btn-dark" href="https://github.com/anakataa/Behavioral-Ransomware-Detection-Creating-an-Early-Warning-System-for-Endpoints/releases/latest/download/sentinel-windows-x64.zip">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F4F5F1" stroke-width="1.8" aria-hidden="true"><path d="M3 5.5 10.5 4.5v7H3zM12.5 4.2 21 3v8.5h-8.5zM3 12.5h7.5v7L3 18.5zM12.5 12.5H21V21l-8.5-1.2z"/></svg>
+        Download for Windows
+      </a>
+      <a class="btn btn-line" href="#linux">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0F1214" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m5 8 4 4-4 4M12 17h7"/></svg>
+        Linux · pip install
+      </a>
+    </div>
+    <p class="meta">Version 0.1.0 · portable .exe, no installer · Windows 10/11 64-bit · Apache 2.0 · <a href="https://github.com/anakataa/Behavioral-Ransomware-Detection-Creating-an-Early-Warning-System-for-Endpoints/releases">all releases</a></p>
+  </div>
+
+  <div class="shot" aria-hidden="true">
+    <div class="window">
+      <div class="window-bar"><i></i><i></i><i></i><span>Sentinel</span></div>
+      <div class="window-body">
+        <div class="status">
+          <div class="status-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0F1214" stroke-width="2" stroke-linejoin="round"><path d="M12 2.5 4 5.5v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10v-6l-8-3Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></div>
+          <div><strong>You're protected</strong><small>Watching 3 folders · 12 bait files intact</small></div>
+        </div>
+        <div class="tiles">
+          <div class="tile"><small>File activity</small><b>2.1<span> /s</span></b></div>
+          <div class="tile"><small>Entropy</small><b>3.4<span> / 8</span></b></div>
+          <div class="tile"><small>Threats stopped</small><b>0</b></div>
+        </div>
+        <svg viewBox="0 0 460 80" width="100%" height="80"><line x1="0" y1="20" x2="460" y2="20" stroke="#3A4148" stroke-dasharray="4 4"/><polyline fill="none" stroke="#D4F25E" stroke-width="2" points="0,62 30,60 60,64 90,58 120,61 150,59 180,63 210,57 240,60 270,62 300,58 330,61 360,59 390,63 420,60 460,61"/></svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how" class="band">
+  <div class="wrap section">
+    <div class="intro">
+      <h2>Three signals. Two must agree.</h2>
+      <p class="lead">Antivirus checks files against a list of known threats. Brand-new ransomware isn't on any list yet. Sentinel ignores names and watches behavior — and acts only when at least two independent signals agree.</p>
+    </div>
+    <div class="grid3">
+      <article class="card">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#0F1214" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17 9 11l4 4 8-8"/><path d="M15 7h6v6"/></svg>
+        <h3>File velocity</h3>
+        <p>People save a document every few minutes. Ransomware rewrites dozens per second. Sentinel counts changes in a sliding window and flags speeds no person produces.</p>
+        <div class="rule">alert above 50 files / second</div>
+      </article>
+      <article class="card">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#0F1214" stroke-width="1.8" aria-hidden="true"><circle cx="5" cy="17" r="1.4"/><circle cx="9" cy="8" r="1.4"/><circle cx="13" cy="14" r="1.4"/><circle cx="18" cy="6" r="1.4"/><circle cx="19" cy="18" r="1.4"/><circle cx="8" cy="20" r="1.4"/></svg>
+        <h3>Shannon entropy</h3>
+        <p>Encrypted data looks like pure noise. Sentinel samples the first 4 KB of each changed file and measures how random it is — documents score low, ciphertext scores near the maximum.</p>
+        <div class="rule">alert above 7.5 of 8 bits / byte</div>
+      </article>
+      <article class="card">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#0F1214" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2.5 4L16 12H5"/></svg>
+        <h3>Bait files</h3>
+        <p>Sentinel plants hidden decoy files that no real program ever opens. Ransomware walks folders blindly — when it rewrites a bait file, it gives itself away.</p>
+        <div class="rule">12 decoys per protected folder</div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="wrap section" aria-labelledby="attack-h">
+  <div class="intro">
+    <h2 id="attack-h">What happens during an attack</h2>
+    <p class="lead">Timings from runs against Sentinel's built-in ransomware simulator on Windows 10.</p>
+  </div>
+  <ol class="timeline">
+    <li><span class="t">0 ms</span><b>First bait file rewritten</b><span>The attacker touches a decoy hidden in the protected folder.</span></li>
+    <li><span class="t">≈ 80 ms</span><b>Signals agree</b><span>Bait and entropy both point at the same burst of activity.</span></li>
+    <li><span class="t">≈ 0.4 s</span><b>Process stopped</b><span>Sentinel identifies the writing process and terminates it.</span></li>
+    <li><span class="t">after</span><b>Logged on your machine</b><span>Every event goes to a local audit log. Nothing leaves the computer.</span></li>
+  </ol>
+</section>
+
+<section class="dark" aria-label="Design principles">
+  <div class="wrap grid4">
+    <div><h3>Fully offline</h3><p>No cloud account, no telemetry. Decisions are made on your computer, so there is no upload delay and no data to leak.</p></div>
+    <div><h3>Light on old hardware</h3><p>Event-driven, no disk scanning. Designed for office PCs and small servers that can't run heavy enterprise security suites.</p></div>
+    <div><h3>Works next to your antivirus</h3><p>Sentinel doesn't replace Windows Defender. It adds a last line of defense for the moment encryption actually starts.</p></div>
+    <div><h3>Open source</h3><p>Every threshold is readable and adjustable. You can see exactly why a process was stopped.</p></div>
+  </div>
+</section>
+
+<section id="install" class="wrap split">
+  <div>
+    <h2>Install on Windows</h2>
+    <ol class="steps">
+      <li><span class="n">1</span><div><b>Download and unzip</b><p><a href="https://github.com/anakataa/Behavioral-Ransomware-Detection-Creating-an-Early-Warning-System-for-Endpoints/releases/latest/download/sentinel-windows-x64.zip">sentinel-windows-x64.zip</a> contains one portable <code>sentinel.exe</code>. Windows SmartScreen may warn about an unsigned app — choose “More info → Run anyway”.</p></div></li>
+      <li><span class="n">2</span><div><b>Try it safely first</b><p>Open a terminal in the folder and run the demo. It creates its own sandbox with fake documents and a harmless simulator, and opens the live dashboard.</p></div></li>
+      <li><span class="n">3</span><div><b>Protect your folders, watch-only for a day</b><p>Sentinel alerts but never stops anything until you drop <code>--monitor-only</code>. Recommended on a new machine.</p></div></li>
+    </ol>
+  </div>
+  <div>
+    <h3>Commands</h3>
+    <div class="term"><span class="p">&gt;</span> sentinel.exe demo
+<span class="p">&gt;</span> sentinel.exe run --watch "%USERPROFILE%\Documents" --monitor-only
+<span class="p">&gt;</span> sentinel.exe run --watch "%USERPROFILE%\Documents"
+<span class="p">&gt;</span> sentinel.exe audit -n 20</div>
+    <h3 id="linux">Linux and developers</h3>
+    <div class="term"><span class="p">$</span> git clone https://github.com/anakataa/Behavioral-Ransomware-Detection-Creating-an-Early-Warning-System-for-Endpoints.git sentinel
+<span class="p">$</span> cd sentinel &amp;&amp; pip install .
+<span class="p">$</span> sentinel demo
+<span class="p">$</span> sentinel run --watch ~/Documents --monitor-only</div>
+    <p class="note">Python 3.10 or newer. The <code>demo</code> command only ever touches its own sandbox folder.</p>
+  </div>
+</section>
+
+<section id="tested" class="band">
+  <div class="wrap section">
+    <div class="intro">
+      <h2>Tested on virtual machines</h2>
+      <p class="lead">The test suite and the attack simulator run on clean Windows and Ubuntu virtual machines. Each scenario is repeated three times on 400 synthetic documents. Full numbers, method and limitations: <a href="https://github.com/anakataa/Behavioral-Ransomware-Detection-Creating-an-Early-Warning-System-for-Endpoints/blob/main/docs/results.md">docs/results.md</a>.</p>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th scope="col">Scenario</th><th scope="col">Ubuntu 22.04 VM</th><th scope="col">Windows 10 (development runs)</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Simulator at 20 / 50 / 100 files per second</th><td><span class="yes">Stopped</span> after 3.5 % / 7.9 % / 17 % of files</td><td><span class="yes">Detected</span> in every run</td></tr>
+          <tr><th scope="row">Simulator at full speed</th><td><span class="warn">Detected in 0.03 s, not stopped</span> — the attack finished in 0.5 s, before the 0.9 s identification step</td><td><span class="yes">Stopped</span> after 21–39 of 400 files</td></tr>
+          <tr><th scope="row">Simulator avoiding bait files</th><td><span class="yes">Detected</span> by speed + entropy alone</td><td>Measured by the CI evaluation job</td></tr>
+          <tr><th scope="row">Editing, copying, zip archives</th><td><span class="yes">No alerts</span> (0 of 9 runs)</td><td><span class="yes">No wrong kills</span> (0 of 68 decisions)</td></tr>
+          <tr><th scope="row">Compressing files in place (gzip)</th><td><span class="warn">Flagged in 3 of 3 runs</span> — known false positive, handled by the trusted-program list</td><td>Measured by the CI evaluation job</td></tr>
+          <tr><th scope="row">Agent at idle</th><td>0.5 % CPU · about 25 MB memory</td><td>Measured by the CI evaluation job</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="requirements" class="wrap split">
+  <div>
+    <h2>Requirements</h2>
+    <div class="scroll">
+      <table>
+        <tbody>
+          <tr><th scope="row">Operating system</th><td>Windows 10 / 11 (64-bit) · Linux (Ubuntu 22.04 tested)</td></tr>
+          <tr><th scope="row">Runtime</th><td>Bundled in the .exe · Python 3.10+ for pip</td></tr>
+          <tr><th scope="row">Network</th><td>None</td></tr>
+          <tr><th scope="row">Permissions</th><td>A normal user account; stops processes running as the same user</td></tr>
+          <tr><th scope="row">License</th><td>Apache 2.0</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div>
+    <h2>Questions</h2>
+    <div class="faq">
+      <div><b>What if it stops a program I need?</b><p>Archivers and backup tools are on a trusted list, and you can add others. Watch-only mode lets you check a machine before anything is stopped.</p></div>
+      <div><b>Does it replace my antivirus?</b><p>No. Keep your antivirus. Sentinel covers the gap where unknown ransomware has already started.</p></div>
+      <div><b>Can it bring back encrypted files?</b><p>No. It limits how many files are lost. Keep regular backups.</p></div>
+      <div><b>Is this production software?</b><p>No — it is a research prototype built for a diploma thesis. Use it alongside, never instead of, proper backups and security software.</p></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Sentinel — diploma thesis project, Information Technology, Collegium Da Vinci, Poznań</span>
+    <span>Apache 2.0 · <a href="https://github.com/anakataa/Behavioral-Ransomware-Detection-Creating-an-Early-Warning-System-for-Endpoints">Source on GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>

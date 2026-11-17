@@ -33,7 +33,11 @@ import psutil
 
 log = logging.getLogger(__name__)
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+if getattr(sys, "frozen", False):
+    # PyInstaller build: dashboard HTML and simulator are bundled next to the code.
+    REPO_ROOT = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+else:
+    REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_HTML = REPO_ROOT / "dashboard" / "sentinel_dashboard.html"
 MOCK = REPO_ROOT / "scripts" / "mock_ransomware.py"
 METRICS_WINDOW = 60.0      # seconds of telemetry returned on the first poll
@@ -54,6 +58,9 @@ class AttackRunner:
         self._lock = threading.Lock()
 
     def _mock(self, *args: str) -> list[str]:
+        if getattr(sys, "frozen", False):
+            # No separate Python in a frozen build: the exe runs the bundled simulator.
+            return [sys.executable, "_mock", *args, "--target", str(self.sandbox)]
         return [sys.executable, str(MOCK), *args, "--target", str(self.sandbox)]
 
     def ensure_sandbox(self) -> None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -56,9 +57,17 @@ class Config:
     log_level: str = "INFO"
 
 
+_WIN_VAR = re.compile(r"%([^%]+)%")
+
+
 def expand_path(raw: str | os.PathLike[str]) -> Path:
-    """Expand ``~``, ``$VAR`` and Windows-style ``%VAR%`` placeholders."""
-    return Path(os.path.expandvars(os.path.expanduser(str(raw))))
+    """Expand ``~``, ``$VAR`` and Windows-style ``%VAR%`` placeholders.
+
+    ``os.path.expandvars`` only understands ``%VAR%`` on Windows, so the
+    Windows form is expanded explicitly to behave the same on every OS.
+    """
+    text = _WIN_VAR.sub(lambda m: os.environ.get(m.group(1), m.group(0)), str(raw))
+    return Path(os.path.expandvars(os.path.expanduser(text)))
 
 
 def _build(cls: type, data: dict[str, Any] | None, section: str):
