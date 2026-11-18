@@ -81,7 +81,11 @@ def test_monitor_only_alerts_without_killing(tmp_path):
 
     assert proc.returncode == 0
     assert agent.audit.recent(10, category="verdict")
-    assert agent.audit.recent(10, category="mitigation")[0].message.startswith("monitor-only")
+    # The attack keeps running, so there may be several verdicts: a late one can
+    # find the simulator already finished ("gone"), and under load a background
+    # writer can make one ambiguous (alert only, no mitigation row). None may kill.
+    actions = [a.message.split(":")[0] for a in agent.audit.recent(10, category="mitigation")]
+    assert set(actions) <= {"monitor-only", "gone"}, actions
 
 
 def test_normal_editing_does_not_trigger(tmp_path):
