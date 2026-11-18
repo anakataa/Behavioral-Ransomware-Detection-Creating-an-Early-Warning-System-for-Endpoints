@@ -34,6 +34,9 @@ ENTROPY_RESAMPLE_GAP = 0.25    # don't re-read the same file more often than thi
 CANARY_REARM_QUIET = 1.0       # ignore vault events right after we rewrite it ourselves
 ATTRIBUTION_SETTLE = 0.3       # boosted sampling before the first attribution window closes
 CONFIRM_WINDOW = 0.6           # second, independent window the culprit must match again
+CONFIRM_MIN_BYTES = 256 * 1024 # ...over at least this much changed data (else it is extended)
+CONFIRM_MAX_WINDOW = 3.0       # ...for at most this long; still too little -> alert only
+EVENT_CATCHUP = 1.0            # longest wait for events of changes made before a window closed
 METRICS_INTERVAL = 0.25        # seconds between telemetry rows for the dashboard
 
 
@@ -68,7 +71,7 @@ class Agent:
 
         self.on_verdict: list[Callable[[Verdict, Suspect | None, MitigationResult | None], None]] = []
         self._last_sampled: dict[Path, float] = {}
-        self._observed: deque[tuple[float, Path, int]] = deque()  # (ts, path, size) of changed files
+        self._observed: deque[tuple[float, Path, int]] = deque()  # (changed at, path, size)
         self._canary_quiet_until = 0.0
         self._handled_until = 0.0  # events stamped before the last response belong to that burst
         self._tick_events = 0              # telemetry accumulators, reset every METRICS_INTERVAL
@@ -182,15 +185,31 @@ class Agent:
             self._fire(Signal(SignalKind.ENTROPY, h, ts, target,
                               {"high_entropy_files": self.entropy.hit_count(ts)}))
 
-    def _record_change(self, event: FileEvent) -> None:
-        """Every changed file counts toward the bytes attribution must explain."""
+    def _record_change(self, event: FileEvent) -> float | None:
+        """Every changed file counts toward the bytes attribution must explain.
+
+        Returns when the file changed. That is its mtime, not the event's
+        arrival: under load events reach the agent late and in batches, and
+        attribution compares them with I/O counters sampled at known times.
+        """
         if event.kind is EventKind.DELETED:
-            return
+            return None
         try:
-            size = event.effective_path.stat().st_size
+            st = event.effective_path.stat()
         except OSError:
-            return
-        self._observed.append((event.timestamp, event.effective_path, size))
+            return None
+        changed = self._change_time(event.timestamp, st.st_mtime)
+        self._observed.append((changed, event.effective_path, st.st_size))
+        return changed
+
+    def _change_time(self, received: float, mtime: float) -> float:
+        """``mtime`` on the monotonic clock, or ``received`` if the mtime is older
+        than the I/O history (copy tools preserve it, malware can backdate it)."""
+        now = time.monotonic()
+        changed = mtime - (time.time() - now)
+        if changed < received - self.io.window:
+            return received
+        return min(changed, now)
 
     def _fire(self, signal: Signal) -> None:
         if signal.kind not in self.engine.active(signal.ts):
@@ -213,21 +232,35 @@ class Agent:
             self.io.boost()
             boosted = time.monotonic()
         self._settle(boosted + ATTRIBUTION_SETTLE)
-        burst_start, observed1 = self._observed_burst()
-        t1 = time.monotonic()
-        first = self.io.suspects(since=burst_start, expected_bytes=observed1, check_reads=False)
-        # Window 2: steady state. Writes and reads must both match again.
+        t1 = self._close_window()
+        burst_start, observed1 = self._observed_burst(until=t1)
+        log.info("attribution window 1: %d B observed", observed1)
+        first = self.io.suspects(since=burst_start, until=t1, expected_bytes=observed1, check_reads=False)
+        # Window 2: steady state. Writes and reads must both match again, over
+        # enough data: a few files are within the file-boundary error of the
+        # ratios, and a browser's background writes then match by chance
+        # (measured: firefox at w x1.06 of 48 KiB while the culprit fell to x0.67).
         self._settle(t1 + CONFIRM_WINDOW)
-        _, observed = self._observed_burst(after=t1)
-        suspects = self.io.suspects(since=t1, expected_bytes=observed) if first else []
+        while True:
+            t2 = self._close_window()
+            _, observed = self._observed_burst(after=t1, until=t2)
+            if observed >= CONFIRM_MIN_BYTES or t2 - t1 >= CONFIRM_MAX_WINDOW:
+                break
+            self._settle(time.monotonic() + 0.2)
+        log.info("attribution window 2: %d B observed over %.2f s", observed, t2 - t1)
+        suspects = self.io.suspects(since=t1, until=t2, expected_bytes=observed) if first else []
         target: Suspect | None = suspects[0] if suspects else None
         outcome = None
         if not first:
             outcome = f"no process accounts for the observed writes ({observed1} B)"
+        elif observed < CONFIRM_MIN_BYTES:
+            outcome = f"too little written to confirm attribution ({observed} B in confirm window)"
         elif target is None:
             outcome = f"no process consistently accounts for the writes ({observed} B in confirm window)"
         elif target.pid not in {s.pid for s in first}:
             outcome = f"best match {target.name} was not a candidate in the first window"
+        elif (gone := self._exited_before(first, target)) is not None:
+            outcome = f"better first-window match {gone.name} (pid {gone.pid}) exited before confirmation"
         elif ambiguous(suspects):
             outcome = f"ambiguous attribution between {suspects[0].name} and {suspects[1].name}"
         elif target.name in self.whitelist:
@@ -280,13 +313,49 @@ class Agent:
             if event is not None and event.timestamp >= self._handled_until:
                 self._record_change(event)
 
-    def _observed_burst(self, after: float | None = None) -> tuple[float | None, int]:
-        """Start and total size of distinct files changed in the attribution window
-        (or only after monotonic time ``after``)."""
+    @staticmethod
+    def _exited_before(first: list[Suspect], target: Suspect) -> Suspect | None:
+        """A first-window candidate ranked above ``target`` that has exited since.
+
+        The likely culprit is then gone and ``target`` may be a bystander that
+        matched by chance (measured: an attack finished between the windows and
+        firefox, at w x1.03 behind it in window 1, was the only match left).
+        """
+        for s in first:
+            if s.pid == target.pid:
+                return None
+            if not psutil.pid_exists(s.pid):
+                return s
+        return None
+
+    def _close_window(self) -> float:
+        """End an attribution window: sample the I/O counters, then read events
+        until every file change made before that sample has been reported.
+
+        The stream has caught up once it reports a change made after the
+        sample. If none comes within EVENT_CATCHUP (the burst is over, or
+        delivery lags even more) the window closes with what has arrived.
+        Returns the sample time, the window's end.
+        """
+        t = self.io.sample()
+        deadline = time.monotonic() + EVENT_CATCHUP
+        while (now := time.monotonic()) < deadline:
+            event = self.listener.get(timeout=min(0.05, deadline - now))
+            if event is None or event.timestamp < self._handled_until:
+                continue
+            changed = self._record_change(event)
+            if changed is not None and changed > t:
+                break
+        return t
+
+    def _observed_burst(self, after: float | None = None, until: float | None = None) -> tuple[float | None, int]:
+        """Start and total size of distinct files changed in the attribution window,
+        optionally only after monotonic time ``after`` and up to ``until``."""
         cutoff = time.monotonic() - self.io.window
         while self._observed and self._observed[0][0] < cutoff:
             self._observed.popleft()
-        changes = [(ts, path, size) for ts, path, size in self._observed if after is None or ts > after]
+        changes = [(ts, path, size) for ts, path, size in self._observed
+                   if (after is None or ts > after) and (until is None or ts <= until)]
         if not changes:
             return None, 0
-        return changes[0][0], sum({path: size for _, path, size in changes}.values())
+        return min(ts for ts, _, _ in changes), sum({path: size for _, path, size in changes}.values())

@@ -14,6 +14,7 @@ from pathlib import Path
 import psutil
 import pytest
 
+from sentinel import agent as agent_mod
 from sentinel import config
 from sentinel.agent import Agent
 from sentinel.attribution import Suspect
@@ -68,9 +69,10 @@ def test_attack_runner_owns_only_its_process_tree(tmp_path, sleepers):
     assert not runner.owns(pid)                          # finished attack is out of scope
 
 
-def test_kill_filter_blocks_out_of_scope_culprit(tmp_path, sleepers):
+def test_kill_filter_blocks_out_of_scope_culprit(tmp_path, sleepers, monkeypatch):
     outsider, insider = sleepers
     agent = _agent(tmp_path, tmp_path, kill_filter=lambda pid: pid == insider.pid)
+    monkeypatch.setattr(agent_mod, "CONFIRM_MIN_BYTES", 0)  # attribution is faked, no file changes
 
     _blame(agent, outsider.pid)
     agent.respond(_verdict())

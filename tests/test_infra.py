@@ -105,10 +105,13 @@ def test_tracker_finds_heavy_writer(tmp_path):
     proc = subprocess.Popen([sys.executable, "-c", WRITER, str(tmp_path / "out.bin")])
     try:
         time.sleep(2.0)
-        suspects = tracker.suspects()
+        suspects = tracker.suspects(top=50)
         # venv launchers on Windows run the real interpreter as a child
         tree = {proc.pid} | {c.pid for c in psutil.Process(proc.pid).children(recursive=True)}
-        assert suspects and suspects[0].pid in tree
+        # Ranking by raw volume alone is not attribution (a busy browser can
+        # out-write this); the tracker must see the writer and all its bytes.
+        mine = [s for s in suspects if s.pid in tree]
+        assert mine and max(s.bytes_written for s in mine) >= 40 * 256 * 1024, suspects
     finally:
         proc.kill()
         proc.wait()

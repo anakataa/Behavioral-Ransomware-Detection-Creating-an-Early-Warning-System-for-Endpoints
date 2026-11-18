@@ -18,7 +18,9 @@ I/O counters (``psutil.Process.io_counters()``):
    match the write volume (measured: a Steam helper at ~170 KiB/s vs. a
    20 files/s attack) rarely match the read volume as well.
 4. Survivors rank by combined closeness of both ratios to 1; an open
-   handle inside a watched directory outranks everything.
+   handle inside a watched directory outranks everything (POSIX only:
+   on Windows the handle query can stall the culprit, see
+   ``_touches_watched``).
 5. Two equally plausible candidates -> ambiguous.
 
 Known gap: intermittent ("partial") encryption touches only a few KiB
@@ -164,11 +166,12 @@ class IoTracker:
         self._thread: threading.Thread | None = None
 
     # -- sampling ----------------------------------------------------------
-    def sample(self) -> None:
+    def sample(self) -> float:
+        """Record every process's counters; returns the sample's monotonic time."""
         with self._sample_lock:
-            self._sample()
+            return self._sample()
 
-    def _sample(self) -> None:
+    def _sample(self) -> float:
         now = time.monotonic()
         seen = set()
         alive = set()
@@ -212,6 +215,7 @@ class IoTracker:
                     self._names.pop(pid, None)
             self._denied &= alive  # forget dead pids (pid reuse)
             self._swept = True
+        return now
 
     @staticmethod
     def _birth(proc: psutil.Process, now: float) -> float:
@@ -254,6 +258,12 @@ class IoTracker:
 
     # -- scoring -----------------------------------------------------------
     def _touches_watched(self, pid: int) -> bool:
+        if sys.platform == "win32":
+            # psutil's open_files() queries every handle of the target. Under I/O
+            # load it stalled for 85 s and held up the target's own file I/O
+            # meanwhile (measured: a 12 s mock attack took 92 s). On Windows the
+            # write/read ratios decide alone.
+            return False
         try:
             files = psutil.Process(pid).open_files()
         except (psutil.Error, OSError):
@@ -265,36 +275,45 @@ class IoTracker:
         return False
 
     @staticmethod
-    def _delta_since(hist: Sequence[tuple[float, int, int]], since: float | None) -> tuple[int, int]:
-        """(written, read) bytes after the last sample at or before ``since``."""
-        base = hist[0]
-        if since is not None:
-            for sample in hist:
-                if sample[0] > since:
-                    break
+    def _delta_since(
+        hist: Sequence[tuple[float, int, int]], since: float | None, until: float | None = None,
+    ) -> tuple[int, int]:
+        """(written, read) bytes between the last samples at or before ``since``
+        and ``until`` (default: the first and the latest sample)."""
+        base, end = hist[0], hist[-1]
+        if until is not None:
+            end = hist[0]
+        for sample in hist:
+            if since is not None and sample[0] <= since:
                 base = sample
-        return hist[-1][1] - base[1], hist[-1][2] - base[2]
+            if until is not None and sample[0] <= until:
+                end = sample
+        return end[1] - base[1], end[2] - base[2]
 
     def suspects(
         self,
         top: int = 5,
         since: float | None = None,
+        until: float | None = None,
         expected_bytes: int = 0,
         check_reads: bool = True,
     ) -> list[Suspect]:
         """Rank processes by how well they explain the observed burst.
 
         ``since``: monotonic start of the burst.
+        ``until``: monotonic end of the window, normally the time returned
+        by ``sample()`` when it closed. Default: sample now.
         ``expected_bytes``: bytes seen changing in watched dirs. When
         given, only processes whose writes *and* reads since the burst
         started are consistent with it remain, closest first. Without it,
         processes are simply ranked by write volume (diagnostics, tests).
         """
-        self.sample()
+        if until is None:
+            self.sample()
         with self._lock:
             history = {pid: list(h) for pid, h in self._history.items() if len(h) >= 2}
             names = dict(self._names)
-        deltas = [(pid, *self._delta_since(h, since)) for pid, h in history.items()]
+        deltas = [(pid, *self._delta_since(h, since, until)) for pid, h in history.items()]
         deltas = [(pid, w, r) for pid, w, r in deltas if w > 0 and not is_protected(pid, names.get(pid))]
         deltas.sort(key=lambda x: x[1], reverse=True)
 
