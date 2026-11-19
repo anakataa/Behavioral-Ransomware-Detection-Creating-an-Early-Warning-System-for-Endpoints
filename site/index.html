@@ -202,12 +202,12 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;
 <section class="wrap section" aria-labelledby="attack-h">
   <div class="intro">
     <h2 id="attack-h">What happens during an attack</h2>
-    <p class="lead">Timings from runs against Sentinel's built-in ransomware simulator on Windows 10.</p>
+    <p class="lead">Timings from evaluation runs against Sentinel's built-in ransomware simulator on a clean Windows Server 2025 virtual machine, at 100–400 files per second.</p>
   </div>
   <ol class="timeline">
     <li><span class="t">0 ms</span><b>First bait file rewritten</b><span>The attacker touches a decoy hidden in the protected folder.</span></li>
-    <li><span class="t">≈ 80 ms</span><b>Signals agree</b><span>Bait and entropy both point at the same burst of activity.</span></li>
-    <li><span class="t">≈ 0.4 s</span><b>Process stopped</b><span>Sentinel identifies the writing process and terminates it.</span></li>
+    <li><span class="t">≈ 40 ms</span><b>Signals agree</b><span>Bait and entropy both point at the same burst of activity.</span></li>
+    <li><span class="t">≈ 1 s</span><b>Process stopped</b><span>Sentinel confirms which process is writing, then terminates it.</span></li>
     <li><span class="t">after</span><b>Logged on your machine</b><span>Every event goes to a local audit log. Nothing leaves the computer.</span></li>
   </ol>
 </section>
@@ -253,14 +253,14 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;
     </div>
     <div class="scroll">
       <table>
-        <thead><tr><th scope="col">Scenario</th><th scope="col">Ubuntu 22.04 VM</th><th scope="col">Windows 10 (development runs)</th></tr></thead>
+        <thead><tr><th scope="col">Scenario</th><th scope="col">Ubuntu 22.04 VM</th><th scope="col">Windows Server 2025 VM</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Simulator at 20 / 50 / 100 files per second</th><td><span class="yes">Stopped</span> after 3.5 % / 7.9 % / 17 % of files</td><td><span class="yes">Detected</span> in every run</td></tr>
-          <tr><th scope="row">Simulator at full speed</th><td><span class="warn">Detected in 0.03 s, not stopped</span> — the attack finished in 0.5 s, before the 0.9 s identification step</td><td><span class="yes">Stopped</span> after 21–39 of 400 files</td></tr>
-          <tr><th scope="row">Simulator avoiding bait files</th><td><span class="yes">Detected</span> by speed + entropy alone</td><td>Measured by the CI evaluation job</td></tr>
-          <tr><th scope="row">Editing, copying, zip archives</th><td><span class="yes">No alerts</span> (0 of 9 runs)</td><td><span class="yes">No wrong kills</span> (0 of 68 decisions)</td></tr>
-          <tr><th scope="row">Compressing files in place (gzip)</th><td><span class="warn">Flagged in 3 of 3 runs</span> — known false positive, handled by the trusted-program list</td><td>Measured by the CI evaluation job</td></tr>
-          <tr><th scope="row">Agent at idle</th><td>0.5 % CPU · about 25 MB memory</td><td>Measured by the CI evaluation job</td></tr>
+          <tr><th scope="row">Simulator at 20 / 50 / 100 files per second</th><td><span class="yes">Stopped</span> after 3.5 % / 7.9 % / 17 % of files</td><td><span class="yes">Stopped</span> after 5.1 % / 12.5 % / 17 % of files</td></tr>
+          <tr><th scope="row">Simulator at full speed</th><td><span class="warn">Detected in 0.03 s, not stopped</span> — the attack finished in 0.5 s, before the 0.9 s identification step</td><td><span class="warn">Detected in 0.04 s, not stopped</span> — the attack finished in 0.6 s</td></tr>
+          <tr><th scope="row">Simulator avoiding bait files</th><td><span class="yes">Detected</span> by speed + entropy alone</td><td><span class="yes">Detected</span> by speed + entropy alone</td></tr>
+          <tr><th scope="row">Editing, copying, zip archives</th><td><span class="yes">No alerts</span> (0 of 9 runs)</td><td><span class="yes">No alerts</span> (0 of 9 runs)</td></tr>
+          <tr><th scope="row">Compressing files in place (gzip)</th><td><span class="warn">Flagged in 3 of 3 runs</span> — known false positive, handled by the trusted-program list</td><td><span class="warn">Flagged in 3 of 3 runs</span></td></tr>
+          <tr><th scope="row">Agent at idle</th><td>0.5 % CPU · about 25 MB memory</td><td>0.1 % CPU · about 25 MB memory</td></tr>
         </tbody>
       </table>
     </div>
