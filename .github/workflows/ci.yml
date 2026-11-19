@@ -30,7 +30,6 @@ jobs:
 
   evaluation:
     name: Evaluation matrix · ${{ matrix.os }}
-    needs: tests
     strategy:
       fail-fast: false
       matrix:

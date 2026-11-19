@@ -104,14 +104,21 @@ def test_tracker_finds_heavy_writer(tmp_path):
     tracker.sample()
     proc = subprocess.Popen([sys.executable, "-c", WRITER, str(tmp_path / "out.bin")])
     try:
-        time.sleep(2.0)
-        suspects = tracker.suspects(top=50)
-        # venv launchers on Windows run the real interpreter as a child
-        tree = {proc.pid} | {c.pid for c in psutil.Process(proc.pid).children(recursive=True)}
-        # Ranking by raw volume alone is not attribution (a busy browser can
-        # out-write this); the tracker must see the writer and all its bytes.
-        mine = [s for s in suspects if s.pid in tree]
-        assert mine and max(s.bytes_written for s in mine) >= 40 * 256 * 1024, suspects
+        # The writer fsyncs 40 x 256 KiB; on a loaded CI VM that takes well
+        # over the 2 s it needs on a laptop, so wait for it instead of sleeping.
+        expected = 40 * 256 * 1024
+        deadline = time.monotonic() + 20.0
+        while True:
+            time.sleep(0.5)
+            suspects = tracker.suspects(top=50)
+            # venv launchers on Windows run the real interpreter as a child
+            tree = {proc.pid} | {c.pid for c in psutil.Process(proc.pid).children(recursive=True)}
+            # Ranking by raw volume alone is not attribution (a busy browser can
+            # out-write this); the tracker must see the writer and all its bytes.
+            mine = [s for s in suspects if s.pid in tree]
+            if (mine and max(s.bytes_written for s in mine) >= expected) or time.monotonic() > deadline:
+                break
+        assert mine and max(s.bytes_written for s in mine) >= expected, suspects
     finally:
         proc.kill()
         proc.wait()
