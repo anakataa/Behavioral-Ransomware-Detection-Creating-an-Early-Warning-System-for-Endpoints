@@ -24,7 +24,7 @@ inside a VM with networking switched off.
 ## 2. Install Sentinel in the VM
 
 ```powershell
-git clone https://github.com/anakataa/Behavioral-Ransomware-Detection-Creating-an-Early-Warning-System-for-Endpoints.git sentinel
+git clone https://github.com/anakataa/sentinel-ransomware.git sentinel
 cd sentinel
 python -m pip install -e ".[dev]"
 python -m pytest -q
